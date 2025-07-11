@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    
+    <item
+        android:id="@+id/action_stop_script"
+        android:icon="@drawable/ic_stop"
+        android:title="停止脚本"
+        android:visible="false"
+        app:showAsAction="ifRoom" />
+    
+    <item
+        android:id="@+id/action_run_script"
+        android:icon="@drawable/ic_play"
+        android:title="运行脚本"
+        app:showAsAction="ifRoom" />
+        
+</menu>

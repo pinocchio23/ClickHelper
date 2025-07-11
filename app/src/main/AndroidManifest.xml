@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 权限声明 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.ACCESSIBILITY_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    
+    <!-- 后台运行关键权限 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+    
+    <!-- 小米设备可能需要的额外权限 -->
+    <uses-permission android:name="android.permission.SYSTEM_OVERLAY_WINDOW" />
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ClickHelper"
+        tools:targetApi="31">
+
+        <!-- Token验证Activity (启动入口) -->
+        <activity
+            android:name=".TokenVerificationActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.ClickHelper"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 主Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.ClickHelper" />
+
+        <!-- 脚本编辑Activity -->
+        <activity
+            android:name=".ui.script.ScriptEditActivity"
+            android:exported="false"
+            android:label="脚本编辑"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- 事件录制Activity -->
+        <activity
+            android:name=".ui.script.EventRecordActivity"
+            android:exported="false"
+            android:label="事件录制"
+            android:parentActivityName=".ui.script.ScriptEditActivity" />
+
+        <!-- 悬浮设置Activity -->
+        <activity
+            android:name=".ui.floating.FloatingSettingsActivity"
+            android:exported="false"
+            android:label="悬浮设置"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- 无障碍服务 -->
+        <service
+            android:name=".service.MyAccessibilityService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- 悬浮工具栏服务 -->
+        <service
+            android:name=".service.FloatingToolbarService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="点击助手悬浮工具栏服务" />
+        </service>
+
+    </application>
+
+</manifest> 

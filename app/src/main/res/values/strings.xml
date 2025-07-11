@@ -1,0 +1,36 @@
+<resources>
+    <string name="app_name">点击助手</string>
+    <string name="title_home">Home</string>
+    <string name="title_dashboard">Dashboard</string>
+    <string name="title_notifications">Notifications</string>
+    <string name="accessibility_service_description">点击助手需要无障碍服务权限来执行自动点击和滑动操作。启用后，即使应用关闭，服务也会保持运行状态，以便随时执行自动化脚本。</string>
+    
+    <!-- Token验证相关字符串 -->
+    <string name="token_verification_title">Token验证</string>
+    <string name="token_verification_subtitle">请输入有效的Token以继续使用</string>
+    <string name="token_hint">请输入Token</string>
+    <string name="token_verify_button">验证Token</string>
+    <string name="token_help_text">如果您没有Token，请联系管理员获取</string>
+    <string name="token_status_valid">Token有效</string>
+    <string name="token_status_invalid">Token无效</string>
+    <string name="token_status_expired">Token已过期</string>
+    <string name="token_status_not_set">未设置Token</string>
+    <string name="token_verification_success">Token验证成功！</string>
+    <string name="token_verification_failed">Token验证失败，请检查输入</string>
+    <string name="token_expired_message">Token已过期，请重新验证</string>
+    <string name="token_remaining_time">剩余时间: %s</string>
+    <string name="token_menu_status">Token状态</string>
+    <string name="token_menu_clear">清除Token</string>
+    <string name="token_clear_confirm_title">确认清除Token</string>
+    <string name="token_clear_confirm_message">确定要清除当前Token吗？清除后需要重新验证才能使用应用。</string>
+    <string name="token_clear_success">Token已清除</string>
+    <string name="token_clear_cancelled">取消清除</string>
+    <string name="token_dialog_ok">确定</string>
+    <string name="token_dialog_cancel">取消</string>
+    <string name="token_days">天</string>
+    <string name="token_hours">小时</string>
+    <string name="token_minutes">分钟</string>
+    <string name="exit_app_title">退出应用</string>
+    <string name="exit_app_message">未验证Token无法使用应用，确定要退出吗？</string>
+    <string name="exit_app_confirm">退出</string>
+</resources>

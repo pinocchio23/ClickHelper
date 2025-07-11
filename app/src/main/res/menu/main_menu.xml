@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_floating_toolbar"
+        android:title="启动悬浮工具栏"
+        android:icon="@drawable/ic_floating_toolbar"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_system_settings"
+        android:title="系统设置指南"
+        android:icon="@drawable/ic_settings"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_check_permissions"
+        android:title="检查权限状态"
+        android:icon="@drawable/ic_check"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_token_status"
+        android:title="Token状态"
+        android:icon="@drawable/ic_check"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_clear_token"
+        android:title="清除Token"
+        android:icon="@drawable/ic_clear"
+        app:showAsAction="never" />
+</menu> 
