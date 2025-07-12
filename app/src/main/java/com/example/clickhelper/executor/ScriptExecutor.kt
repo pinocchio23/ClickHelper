@@ -202,10 +202,13 @@ class ScriptExecutor(private val context: Context) {
         Log.d(TAG, "比较类型: $comparisonType")
         
         // 根据比较类型判断是数字识别还是文字识别
+        Log.d(TAG, "OCR事件参数: ${event.params}")
+        Log.d(TAG, "比较类型: $comparisonType")
+        
         if (comparisonType == "包含") {
             // 文字识别
             val targetText = event.params["targetText"] as? String ?: ""
-            Log.d(TAG, "目标文字: $targetText")
+            Log.d(TAG, "执行文字识别逻辑，目标文字: $targetText")
             
             // 显示Toast提示开始识别
             handler.post {
@@ -257,7 +260,7 @@ class ScriptExecutor(private val context: Context) {
         } else {
             // 数字识别
             val targetNumber = (event.params["targetNumber"] as? Number)?.toDouble() ?: 0.0
-            Log.d(TAG, "目标数字: $targetNumber")
+            Log.d(TAG, "执行数字识别逻辑，目标数字: $targetNumber")
             
             // 显示Toast提示开始识别
             handler.post {

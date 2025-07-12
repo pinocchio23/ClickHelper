@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
     
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     // Google ML Kit Text Recognition - 专门用于阿拉伯数字识别
     implementation("com.google.mlkit:text-recognition:16.0.0")
     

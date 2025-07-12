@@ -28,6 +28,10 @@ class EventRecordActivity : AppCompatActivity() {
     private var startY = 0f
     private var endX = 0f
     private var endY = 0f
+    private var viewStartX = 0f
+    private var viewStartY = 0f
+    private var viewEndX = 0f
+    private var viewEndY = 0f
     private var isRecording = false
     private var isEditMode = false
     private var editPosition = -1
@@ -107,35 +111,55 @@ class EventRecordActivity : AppCompatActivity() {
         if (existingEvent != null) {
             when (existingEvent.type) {
                 EventType.CLICK -> {
+                    // 加载屏幕坐标
                     startX = (existingEvent.params["x"] as? Number)?.toFloat() ?: 0f
                     startY = (existingEvent.params["y"] as? Number)?.toFloat() ?: 0f
                     endX = startX
                     endY = startY
+                    // 对于绘制，我们需要转换为View坐标，但对于CLICK事件，通常屏幕坐标和View坐标相同（全屏Activity）
+                    viewStartX = startX
+                    viewStartY = startY
+                    viewEndX = endX
+                    viewEndY = endY
                     isRecording = true
                     
-                    overlayView.setClickPoint(startX, startY)
+                    overlayView.setClickPoint(viewStartX, viewStartY)
                     overlayView.invalidate()
                     updateInstructionText()
                 }
                 EventType.SWIPE -> {
+                    // 加载屏幕坐标
                     startX = (existingEvent.params["startX"] as? Number)?.toFloat() ?: 0f
                     startY = (existingEvent.params["startY"] as? Number)?.toFloat() ?: 0f
                     endX = (existingEvent.params["endX"] as? Number)?.toFloat() ?: 0f
                     endY = (existingEvent.params["endY"] as? Number)?.toFloat() ?: 0f
+                    // 对于绘制，屏幕坐标和View坐标相同（全屏Activity）
+                    viewStartX = startX
+                    viewStartY = startY
+                    viewEndX = endX
+                    viewEndY = endY
                     isRecording = true
                     
-                    overlayView.setSwipePath(startX, startY, endX, endY)
+                    overlayView.setSwipePath(viewStartX, viewStartY, viewEndX, viewEndY)
                     overlayView.invalidate()
                     updateInstructionText()
                 }
                 EventType.OCR -> {
+                    // 加载屏幕坐标
                     startX = (existingEvent.params["left"] as? Number)?.toFloat() ?: 0f
                     startY = (existingEvent.params["top"] as? Number)?.toFloat() ?: 0f
                     endX = (existingEvent.params["right"] as? Number)?.toFloat() ?: 0f
                     endY = (existingEvent.params["bottom"] as? Number)?.toFloat() ?: 0f
+                    // 对于绘制，屏幕坐标和View坐标相同（全屏Activity）
+                    viewStartX = startX
+                    viewStartY = startY
+                    viewEndX = endX
+                    viewEndY = endY
                     isRecording = true
                     
-                    overlayView.setOcrRect(startX, startY, endX, endY)
+                    android.util.Log.d("EventRecordActivity", "加载OCR区域: 屏幕坐标($startX, $startY) -> ($endX, $endY)")
+                    
+                    overlayView.setOcrRect(viewStartX, viewStartY, viewEndX, viewEndY)
                     overlayView.invalidate()
                     updateInstructionText()
                 }
@@ -150,28 +174,39 @@ class EventRecordActivity : AppCompatActivity() {
         overlayView.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startX = event.x
-                    startY = event.y
+                    // 保存屏幕绝对坐标（用于执行）
+                    startX = event.rawX
+                    startY = event.rawY
+                    // 保存View坐标（用于绘制）
+                    viewStartX = event.x
+                    viewStartY = event.y
                     isRecording = true
+                    
+                    android.util.Log.d("EventRecordActivity", "记录起始坐标: 屏幕($startX, $startY), View($viewStartX, $viewStartY)")
                     
                     if (eventType == EventType.CLICK) {
                         // 点击事件立即显示
-                        overlayView.setClickPoint(startX, startY)
+                        overlayView.setClickPoint(viewStartX, viewStartY)
                         overlayView.invalidate()
                     }
                 }
                 
                 MotionEvent.ACTION_MOVE -> {
                     if (isRecording) {
-                        endX = event.x
-                        endY = event.y
+                        // 保存屏幕绝对坐标（用于执行）
+                        endX = event.rawX
+                        endY = event.rawY
+                        // 保存View坐标（用于绘制）
+                        viewEndX = event.x
+                        viewEndY = event.y
+                        
                         when (eventType) {
                             EventType.SWIPE -> {
-                                overlayView.setSwipePath(startX, startY, endX, endY)
+                                overlayView.setSwipePath(viewStartX, viewStartY, viewEndX, viewEndY)
                                 overlayView.invalidate()
                             }
                             EventType.OCR -> {
-                                overlayView.setOcrRect(startX, startY, endX, endY)
+                                overlayView.setOcrRect(viewStartX, viewStartY, viewEndX, viewEndY)
                                 overlayView.invalidate()
                             }
                             EventType.CLICK, EventType.WAIT -> {
@@ -183,16 +218,22 @@ class EventRecordActivity : AppCompatActivity() {
                 
                 MotionEvent.ACTION_UP -> {
                     if (isRecording) {
-                        endX = event.x
-                        endY = event.y
+                        // 保存屏幕绝对坐标（用于执行）
+                        endX = event.rawX
+                        endY = event.rawY
+                        // 保存View坐标（用于绘制）
+                        viewEndX = event.x
+                        viewEndY = event.y
+                        
+                        android.util.Log.d("EventRecordActivity", "记录结束坐标: 屏幕($endX, $endY), View($viewEndX, $viewEndY)")
                         
                         when (eventType) {
                             EventType.SWIPE -> {
-                                overlayView.setSwipePath(startX, startY, endX, endY)
+                                overlayView.setSwipePath(viewStartX, viewStartY, viewEndX, viewEndY)
                                 overlayView.invalidate()
                             }
                             EventType.OCR -> {
-                                overlayView.setOcrRect(startX, startY, endX, endY)
+                                overlayView.setOcrRect(viewStartX, viewStartY, viewEndX, viewEndY)
                                 overlayView.invalidate()
                             }
                             EventType.CLICK, EventType.WAIT -> {
@@ -238,7 +279,7 @@ class EventRecordActivity : AppCompatActivity() {
             return
         }
         
-        // 验证滑动事件的距离
+        // 验证滑动事件的距离（使用屏幕坐标）
         if (eventType == EventType.SWIPE) {
             val distance = kotlin.math.sqrt((endX - startX) * (endX - startX) + (endY - startY) * (endY - startY))
             if (distance < 50) {
@@ -247,7 +288,7 @@ class EventRecordActivity : AppCompatActivity() {
             }
         }
         
-        // 验证OCR区域大小
+        // 验证OCR区域大小（使用屏幕坐标）
         if (eventType == EventType.OCR) {
             val width = kotlin.math.abs(endX - startX)
             val height = kotlin.math.abs(endY - startY)
@@ -255,6 +296,8 @@ class EventRecordActivity : AppCompatActivity() {
                 Toast.makeText(this, "识别区域太小，请重新选择", Toast.LENGTH_SHORT).show()
                 return
             }
+            
+            android.util.Log.d("EventRecordActivity", "确认OCR区域: 屏幕坐标(${kotlin.math.min(startX, endX)}, ${kotlin.math.min(startY, endY)}) -> (${kotlin.math.max(startX, endX)}, ${kotlin.math.max(startY, endY)})")
             
             // 显示目标数字输入对话框
             showTargetTextDialog()
@@ -314,8 +357,11 @@ class EventRecordActivity : AppCompatActivity() {
         
         editTextNumber.hint = "请输入目标文本或数字"
         
-        // 默认选择包含
-        radioContains.isChecked = true
+        // 初始状态：所有选项都隐藏，无默认选择
+        radioLessThan.visibility = View.GONE
+        radioEquals.visibility = View.GONE
+        radioContains.visibility = View.GONE
+        radioGroupComparison.clearCheck()
         
         // 监听输入变化，动态调整选项
         editTextNumber.addTextChangedListener(object : android.text.TextWatcher {
@@ -326,28 +372,28 @@ class EventRecordActivity : AppCompatActivity() {
                 if (input.isNotEmpty()) {
                     val firstChar = input[0]
                     if (firstChar.isDigit()) {
-                        // 数字输入，显示等于和小于选项
-                        radioLessThan.visibility = View.VISIBLE
+                        // 数字输入，显示等于和小于选项，默认选择等于
                         radioEquals.visibility = View.VISIBLE
+                        radioLessThan.visibility = View.VISIBLE
                         radioContains.visibility = View.GONE
                         
-                        // 默认选择小于
-                        radioLessThan.isChecked = true
+                        // 默认选择等于
+                        radioEquals.isChecked = true
                     } else {
                         // 文字输入，只显示包含选项
-                        radioLessThan.visibility = View.GONE
                         radioEquals.visibility = View.GONE
+                        radioLessThan.visibility = View.GONE
                         radioContains.visibility = View.VISIBLE
                         
                         // 默认选择包含
                         radioContains.isChecked = true
                     }
                 } else {
-                    // 空输入，默认显示包含选项
-                    radioLessThan.visibility = View.VISIBLE
-                    radioEquals.visibility = View.VISIBLE
-                    radioContains.visibility = View.VISIBLE
-                    radioContains.isChecked = true
+                    // 空输入，隐藏所有选项
+                    radioEquals.visibility = View.GONE
+                    radioLessThan.visibility = View.GONE
+                    radioContains.visibility = View.GONE
+                    radioGroupComparison.clearCheck()
                 }
             }
         })
@@ -365,11 +411,29 @@ class EventRecordActivity : AppCompatActivity() {
                 editTextNumber.setText(existingTargetText)
             }
             
+            // 编辑模式下根据现有数据设置选项
             when (existingComparisonType) {
-                "小于" -> radioLessThan.isChecked = true
-                "等于" -> radioEquals.isChecked = true
-                "包含" -> radioContains.isChecked = true
-                else -> radioContains.isChecked = true
+                "小于" -> {
+                    radioEquals.visibility = View.VISIBLE
+                    radioLessThan.visibility = View.VISIBLE
+                    radioContains.visibility = View.GONE
+                    radioLessThan.isChecked = true
+                }
+                "等于" -> {
+                    radioEquals.visibility = View.VISIBLE
+                    radioLessThan.visibility = View.VISIBLE
+                    radioContains.visibility = View.GONE
+                    radioEquals.isChecked = true
+                }
+                "包含" -> {
+                    radioEquals.visibility = View.GONE
+                    radioLessThan.visibility = View.GONE
+                    radioContains.visibility = View.VISIBLE
+                    radioContains.isChecked = true
+                }
+                else -> {
+                    // 保持初始状态
+                }
             }
         }
         
@@ -380,40 +444,51 @@ class EventRecordActivity : AppCompatActivity() {
                 val targetText = editTextNumber.text.toString().trim()
                 if (targetText.isNotEmpty()) {
                     val comparisonType = when {
-                        radioLessThan.isChecked -> "小于"
                         radioEquals.isChecked -> "等于"
+                        radioLessThan.isChecked -> "小于"
                         radioContains.isChecked -> "包含"
-                        else -> "包含"
+                        else -> {
+                            // 如果没有选择，根据输入类型自动选择
+                            if (targetText[0].isDigit()) "等于" else "包含"
+                        }
                     }
+                    
+                    val left = kotlin.math.min(startX, endX)
+                    val top = kotlin.math.min(startY, endY)
+                    val right = kotlin.math.max(startX, endX)
+                    val bottom = kotlin.math.max(startY, endY)
+                    
+                    android.util.Log.d("EventRecordActivity", "保存OCR节点: targetText=$targetText, comparisonType=$comparisonType")
+                    android.util.Log.d("EventRecordActivity", "保存OCR坐标: 屏幕($left, $top) -> ($right, $bottom)")
                     
                     val params = if (comparisonType == "包含") {
                         // 文字识别
                         mapOf(
-                            "left" to kotlin.math.min(startX, endX),
-                            "top" to kotlin.math.min(startY, endY),
-                            "right" to kotlin.math.max(startX, endX),
-                            "bottom" to kotlin.math.max(startY, endY),
+                            "left" to left,
+                            "top" to top,
+                            "right" to right,
+                            "bottom" to bottom,
                             "targetText" to targetText,
                             "comparisonType" to comparisonType
                         )
                     } else {
                         // 数字识别
                         val targetNumber = targetText.toDoubleOrNull()
-                        if (targetNumber != null) {
-                            mapOf(
-                                "left" to kotlin.math.min(startX, endX),
-                                "top" to kotlin.math.min(startY, endY),
-                                "right" to kotlin.math.max(startX, endX),
-                                "bottom" to kotlin.math.max(startY, endY),
-                                "targetNumber" to targetNumber,
-                                "comparisonType" to comparisonType
-                            )
-                        } else {
+                        if (targetNumber == null) {
                             Toast.makeText(this, "数字格式不正确", Toast.LENGTH_SHORT).show()
                             return@setPositiveButton
                         }
+                        mapOf(
+                            "left" to left,
+                            "top" to top,
+                            "right" to right,
+                            "bottom" to bottom,
+                            "targetNumber" to targetNumber,
+                            "comparisonType" to comparisonType
+                        )
                     }
                     
+                    android.util.Log.d("EventRecordActivity", "保存的OCR参数: $params")
                     val event = ScriptEvent(EventType.OCR, params)
                     
                     val resultIntent = Intent()

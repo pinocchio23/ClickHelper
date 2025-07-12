@@ -429,7 +429,7 @@ class FloatingToolbarService : Service() {
     }
     
     private fun showEventTypeDialog() {
-        val items = arrayOf("点击", "滑动", "等待", "识别数字")
+        val items = arrayOf("点击", "滑动", "等待", "识别文本")
         val icons = arrayOf("👆", "👉", "⏱️", "👁️")
         val displayItems = items.mapIndexed { index, item -> "${icons[index]} $item" }.toTypedArray()
         
@@ -440,7 +440,11 @@ class FloatingToolbarService : Service() {
                     0 -> startEventRecording(EventType.CLICK)
                     1 -> startEventRecording(EventType.SWIPE)
                     2 -> showWaitEventDialog()
-                    3 -> startEventRecording(EventType.OCR)
+                    3 -> {
+                        // OCR事件
+                        Toast.makeText(this, "请拖拽选择要识别文本的区域", Toast.LENGTH_SHORT).show()
+                        startEventRecording(EventType.OCR)
+                    }
                 }
                 dialog.dismiss()
             }
@@ -471,7 +475,7 @@ class FloatingToolbarService : Service() {
                 createEventOverlay()
             }
             EventType.OCR -> {
-                Toast.makeText(this, "请拖拽选择要识别数字的区域", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "请拖拽选择要识别文本的区域", Toast.LENGTH_SHORT).show()
                 createEventOverlay()
             }
             else -> {
@@ -562,8 +566,9 @@ class FloatingToolbarService : Service() {
                     "x" to startX,
                     "y" to startY
                 ))
+                Log.d(TAG, "工具栏创建点击事件: (${startX.toInt()}, ${startY.toInt()})")
                 Toast.makeText(this, "点击事件已记录: (${startX.toInt()}, ${startY.toInt()})", Toast.LENGTH_SHORT).show()
-                // TODO: 保存事件到当前脚本
+                saveNewEventToCurrentScript(event)
             }
             EventType.SWIPE -> {
                 val distance = kotlin.math.sqrt((endX - startX) * (endX - startX) + (endY - startY) * (endY - startY))
@@ -576,8 +581,9 @@ class FloatingToolbarService : Service() {
                         "endX" to endX,
                         "endY" to endY
                     ))
+                    Log.d(TAG, "工具栏创建滑动事件: (${startX.toInt()}, ${startY.toInt()}) -> (${endX.toInt()}, ${endY.toInt()})")
                     Toast.makeText(this, "滑动事件已记录", Toast.LENGTH_SHORT).show()
-                    // TODO: 保存事件到当前脚本
+                    saveNewEventToCurrentScript(event)
                 }
             }
             EventType.OCR -> {
@@ -607,8 +613,9 @@ class FloatingToolbarService : Service() {
             .setPositiveButton("确定") { _, _ ->
                 val duration = editText.text.toString().toIntOrNull() ?: 1000
                 val event = ScriptEvent(EventType.WAIT, mapOf("duration" to duration))
+                Log.d(TAG, "工具栏创建等待事件: ${duration}ms")
                 Toast.makeText(this, "等待事件已记录: ${duration}ms", Toast.LENGTH_SHORT).show()
-                // TODO: 保存事件到当前脚本
+                saveNewEventToCurrentScript(event)
             }
             .setNegativeButton("取消", null)
             .create()
@@ -637,8 +644,11 @@ class FloatingToolbarService : Service() {
         
         editTextNumber.hint = "请输入目标文本或数字"
         
-        // 默认选择包含
-        radioContains.isChecked = true
+        // 初始状态：所有选项都隐藏，无默认选择
+        radioLessThan.visibility = View.GONE
+        radioEquals.visibility = View.GONE
+        radioContains.visibility = View.GONE
+        radioGroupComparison.clearCheck()
         
         // 监听输入变化，动态调整选项
         editTextNumber.addTextChangedListener(object : TextWatcher {
@@ -649,28 +659,28 @@ class FloatingToolbarService : Service() {
                 if (input.isNotEmpty()) {
                     val firstChar = input[0]
                     if (firstChar.isDigit()) {
-                        // 数字输入，显示等于和小于选项
-                        radioLessThan.visibility = View.VISIBLE
+                        // 数字输入，显示等于和小于选项，默认选择等于
                         radioEquals.visibility = View.VISIBLE
+                        radioLessThan.visibility = View.VISIBLE
                         radioContains.visibility = View.GONE
                         
-                        // 默认选择小于
-                        radioLessThan.isChecked = true
+                        // 默认选择等于
+                        radioEquals.isChecked = true
                     } else {
                         // 文字输入，只显示包含选项
-                        radioLessThan.visibility = View.GONE
                         radioEquals.visibility = View.GONE
+                        radioLessThan.visibility = View.GONE
                         radioContains.visibility = View.VISIBLE
                         
                         // 默认选择包含
                         radioContains.isChecked = true
                     }
                 } else {
-                    // 空输入，默认显示包含选项
-                    radioLessThan.visibility = View.VISIBLE
-                    radioEquals.visibility = View.VISIBLE
-                    radioContains.visibility = View.VISIBLE
-                    radioContains.isChecked = true
+                    // 空输入，隐藏所有选项
+                    radioEquals.visibility = View.GONE
+                    radioLessThan.visibility = View.GONE
+                    radioContains.visibility = View.GONE
+                    radioGroupComparison.clearCheck()
                 }
             }
         })
@@ -682,10 +692,13 @@ class FloatingToolbarService : Service() {
                 val targetText = editTextNumber.text.toString().trim()
                 if (targetText.isNotEmpty()) {
                     val comparisonType = when {
-                        radioLessThan.isChecked -> "小于"
                         radioEquals.isChecked -> "等于"
+                        radioLessThan.isChecked -> "小于"
                         radioContains.isChecked -> "包含"
-                        else -> "包含"
+                        else -> {
+                            // 如果没有选择，根据输入类型自动选择
+                            if (targetText[0].isDigit()) "等于" else "包含"
+                        }
                     }
                     
                     val left = kotlin.math.min(startX, endX)
@@ -694,6 +707,8 @@ class FloatingToolbarService : Service() {
                     val bottom = kotlin.math.max(startY, endY)
                     val width = right - left
                     val height = bottom - top
+                    
+                    Log.d(TAG, "工具栏创建OCR节点: targetText=$targetText, comparisonType=$comparisonType")
                     
                     val event = if (comparisonType == "包含") {
                         // 文字识别
@@ -708,24 +723,24 @@ class FloatingToolbarService : Service() {
                     } else {
                         // 数字识别
                         val targetNumber = targetText.toDoubleOrNull()
-                        if (targetNumber != null) {
-                            ScriptEvent(EventType.OCR, mapOf(
-                                "left" to left,
-                                "top" to top,
-                                "right" to right,
-                                "bottom" to bottom,
-                                "targetNumber" to targetNumber,
-                                "comparisonType" to comparisonType
-                            ))
-                        } else {
+                        if (targetNumber == null) {
                             Toast.makeText(this, "数字格式不正确", Toast.LENGTH_SHORT).show()
                             return@setPositiveButton
                         }
+                        ScriptEvent(EventType.OCR, mapOf(
+                            "left" to left,
+                            "top" to top,
+                            "right" to right,
+                            "bottom" to bottom,
+                            "targetNumber" to targetNumber,
+                            "comparisonType" to comparisonType
+                        ))
                     }
                     
+                    Log.d(TAG, "工具栏保存的OCR参数: ${event.params}")
                     Log.d(TAG, "OCR事件已记录 - 区域: ($left, $top) -> ($right, $bottom), 尺寸: ${width}x${height}")
                     Toast.makeText(this, "文本识别事件已记录: $comparisonType $targetText\n区域: ${width.toInt()}x${height.toInt()}", Toast.LENGTH_LONG).show()
-                    // TODO: 保存事件到当前脚本
+                    saveNewEventToCurrentScript(event)
                 } else {
                     Toast.makeText(this, "目标文本不能为空", Toast.LENGTH_SHORT).show()
                 }
@@ -875,16 +890,12 @@ class FloatingToolbarService : Service() {
             .setPositiveButton("确定") { _, _ ->
                 val duration = editText.text.toString().toIntOrNull() ?: 1000
                 val newEvent = ScriptEvent(EventType.WAIT, mapOf("duration" to duration))
+                Log.d(TAG, "工具栏更新等待事件: ${duration}ms")
                 script.events[eventIndex] = newEvent
                 
                 // 保存脚本
-                GlobalScope.launch(Dispatchers.IO) {
-                    val scriptStorage = ScriptStorage(this@FloatingToolbarService)
-                    scriptStorage.saveScript(script)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@FloatingToolbarService, "等待事件已更新: ${duration}ms", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                saveEditedScript(script)
+                Toast.makeText(this@FloatingToolbarService, "等待事件已更新: ${duration}ms", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("取消", null)
             .create()
@@ -1060,6 +1071,7 @@ class FloatingToolbarService : Service() {
                     "x" to startX,
                     "y" to startY
                 ))
+                Log.d(TAG, "工具栏更新点击事件: 位置(${startX.toInt()}, ${startY.toInt()})")
                 script.events[eventIndex] = newEvent
                 Toast.makeText(this, "点击事件已更新: (${startX.toInt()}, ${startY.toInt()})", Toast.LENGTH_SHORT).show()
                 saveEditedScript(script)
@@ -1075,6 +1087,7 @@ class FloatingToolbarService : Service() {
                         "endX" to endX,
                         "endY" to endY
                     ))
+                    Log.d(TAG, "工具栏更新滑动事件: (${startX.toInt()}, ${startY.toInt()}) -> (${endX.toInt()}, ${endY.toInt()})")
                     script.events[eventIndex] = newEvent
                     Toast.makeText(this, "滑动事件已更新", Toast.LENGTH_SHORT).show()
                     saveEditedScript(script)
@@ -1136,19 +1149,19 @@ class FloatingToolbarService : Service() {
                     val firstChar = input[0]
                     if (firstChar.isDigit()) {
                         // 数字输入，显示等于和小于选项
-                        radioLessThan.visibility = View.VISIBLE
                         radioEquals.visibility = View.VISIBLE
+                        radioLessThan.visibility = View.VISIBLE
                         radioContains.visibility = View.GONE
                     } else {
                         // 文字输入，只显示包含选项
-                        radioLessThan.visibility = View.GONE
                         radioEquals.visibility = View.GONE
+                        radioLessThan.visibility = View.GONE
                         radioContains.visibility = View.VISIBLE
                     }
                 } else {
                     // 空输入，显示所有选项
-                    radioLessThan.visibility = View.VISIBLE
                     radioEquals.visibility = View.VISIBLE
+                    radioLessThan.visibility = View.VISIBLE
                     radioContains.visibility = View.VISIBLE
                 }
             }
@@ -1156,25 +1169,36 @@ class FloatingToolbarService : Service() {
         
         Log.d(TAG, "编辑OCR事件，原始比较类型: $originalComparison")
         
-        // 清除所有选中状态，然后设置正确的选中状态
-        radioGroupComparison.clearCheck()
+        // 根据原有数据设置选项显示和选中状态
         when (originalComparison) {
             "小于" -> {
+                radioEquals.visibility = View.VISIBLE
+                radioLessThan.visibility = View.VISIBLE
+                radioContains.visibility = View.GONE
                 radioLessThan.isChecked = true
                 Log.d(TAG, "设置小于选项为选中状态")
             }
             "等于" -> {
+                radioEquals.visibility = View.VISIBLE
+                radioLessThan.visibility = View.VISIBLE
+                radioContains.visibility = View.GONE
                 radioEquals.isChecked = true
                 Log.d(TAG, "设置等于选项为选中状态")
             }
             "包含" -> {
+                radioEquals.visibility = View.GONE
+                radioLessThan.visibility = View.GONE
+                radioContains.visibility = View.VISIBLE
                 radioContains.isChecked = true
                 Log.d(TAG, "设置包含选项为选中状态")
             }
             else -> {
-                // 默认选择包含
-                radioContains.isChecked = true
-                Log.d(TAG, "使用默认选项：包含")
+                // 默认显示数字识别选项，选择等于
+                radioEquals.visibility = View.VISIBLE
+                radioLessThan.visibility = View.VISIBLE
+                radioContains.visibility = View.GONE
+                radioEquals.isChecked = true
+                Log.d(TAG, "使用默认选项：等于")
             }
         }
         
@@ -1185,12 +1209,13 @@ class FloatingToolbarService : Service() {
                 val targetText = editTextNumber.text.toString().trim()
                 if (targetText.isNotEmpty()) {
                     val comparisonType = when {
-                        radioLessThan.isChecked -> "小于"
                         radioEquals.isChecked -> "等于"
+                        radioLessThan.isChecked -> "小于"
                         radioContains.isChecked -> "包含"
-                        else -> "包含"
+                        else -> "等于"
                     }
                     Log.d(TAG, "保存OCR事件，新的比较类型: $comparisonType")
+                    Log.d(TAG, "工具栏保存OCR节点: targetText=$targetText, comparisonType=$comparisonType")
                     
                     val left = kotlin.math.min(startX, endX)
                     val top = kotlin.math.min(startY, endY)
@@ -1212,21 +1237,21 @@ class FloatingToolbarService : Service() {
                     } else {
                         // 数字识别
                         val targetNumber = targetText.toDoubleOrNull()
-                        if (targetNumber != null) {
-                            ScriptEvent(EventType.OCR, mapOf(
-                                "left" to left,
-                                "top" to top,
-                                "right" to right,
-                                "bottom" to bottom,
-                                "targetNumber" to targetNumber,
-                                "comparisonType" to comparisonType
-                            ))
-                        } else {
+                        if (targetNumber == null) {
                             Toast.makeText(this, "数字格式不正确", Toast.LENGTH_SHORT).show()
                             return@setPositiveButton
                         }
+                        ScriptEvent(EventType.OCR, mapOf(
+                            "left" to left,
+                            "top" to top,
+                            "right" to right,
+                            "bottom" to bottom,
+                            "targetNumber" to targetNumber,
+                            "comparisonType" to comparisonType
+                        ))
                     }
                     
+                    Log.d(TAG, "工具栏更新的OCR参数: ${newEvent.params}")
                     script.events[eventIndex] = newEvent
                     Log.d(TAG, "OCR事件已更新 - 区域: ($left, $top) -> ($right, $bottom), 尺寸: ${width}x${height}")
                     Toast.makeText(this, "文本识别事件已更新: $comparisonType $targetText\n区域: ${width.toInt()}x${height.toInt()}", Toast.LENGTH_LONG).show()
@@ -1247,11 +1272,60 @@ class FloatingToolbarService : Service() {
         alertDialog.show()
     }
     
+    /**
+     * 保存新事件到当前脚本
+     */
+    private fun saveNewEventToCurrentScript(event: ScriptEvent) {
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val scriptStorage = ScriptStorage(this@FloatingToolbarService)
+                val scripts = scriptStorage.loadScripts()
+                
+                // 查找当前正在编辑的脚本
+                val script = currentEditingScriptId?.let { scriptId ->
+                    scripts.find { it.id == scriptId }
+                } ?: scripts.firstOrNull()
+                
+                if (script != null) {
+                    Log.d(TAG, "工具栏添加新事件到脚本: ${script.name}")
+                    Log.d(TAG, "新事件类型: ${event.type}, 参数: ${event.params}")
+                    
+                    // 添加新事件
+                    script.events.add(event)
+                    
+                    // 保存脚本
+                    scriptStorage.saveScript(script)
+                    Log.d(TAG, "工具栏新事件保存完成，脚本现有事件数量: ${script.events.size}")
+                    
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@FloatingToolbarService, "事件已添加到脚本 \"${script.name}\"", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Log.w(TAG, "未找到当前编辑的脚本，无法保存新事件")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@FloatingToolbarService, "未找到当前脚本，请先在编辑页面打开脚本", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "保存新事件失败", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@FloatingToolbarService, "保存事件失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
     private fun saveEditedScript(script: Script) {
         GlobalScope.launch(Dispatchers.IO) {
+            Log.d(TAG, "工具栏开始保存脚本: ${script.name}")
+            Log.d(TAG, "工具栏保存的事件数量: ${script.events.size}")
+            script.events.forEachIndexed { index, event ->
+                Log.d(TAG, "工具栏保存事件 $index: ${event.type} - ${event.params}")
+            }
+            
             val scriptStorage = ScriptStorage(this@FloatingToolbarService)
             scriptStorage.saveScript(script)
-            Log.d(TAG, "Script saved after editing")
+            Log.d(TAG, "工具栏脚本保存完成")
         }
     }
     
@@ -1289,13 +1363,15 @@ class FloatingToolbarService : Service() {
 
                 // 优先使用当前正在编辑的脚本ID
                 val script = currentEditingScriptId?.let { scriptId ->
+                    Log.d(TAG, "查找脚本ID: $scriptId")
                     scripts.find { it.id == scriptId }
                 } ?: scripts.first() // 如果没有设置当前脚本ID，则使用第一个脚本
-                Log.d(TAG, "Using script: ${script.name} with ${script.events.size} events")
+                Log.d(TAG, "工具栏执行脚本: ${script.name} with ${script.events.size} events")
+                Log.d(TAG, "当前编辑脚本ID: $currentEditingScriptId")
                 
                 // 打印所有事件的详细信息
                 script.events.forEachIndexed { index, event ->
-                    Log.d(TAG, "Event $index: ${event.type} with params: ${event.params}")
+                    Log.d(TAG, "工具栏事件 $index: ${event.type} with params: ${event.params}")
                 }
                 
                 if (script.events.isEmpty()) {

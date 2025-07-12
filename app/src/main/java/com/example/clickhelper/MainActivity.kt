@@ -175,7 +175,7 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         } else {
-            // 基本权限已授予，但仍需检查系统级设置
+            // 基本权限已授予，检查系统级设置
             checkSystemSettings()
         }
     }

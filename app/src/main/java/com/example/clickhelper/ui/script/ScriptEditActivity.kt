@@ -141,17 +141,51 @@ class ScriptEditActivity : AppCompatActivity() {
         tokenManager.updateLastActivity()
         
         // 在Activity恢复时重新加载脚本数据（以防被工具栏编辑）
+        reloadScriptData()
+    }
+    
+    /**
+     * 重新加载脚本数据，确保与存储同步
+     */
+    private fun reloadScriptData() {
         lifecycleScope.launch {
+            android.util.Log.d("ScriptEditActivity", "重新加载脚本数据...")
             val scripts = scriptStorage.loadScripts()
             val updatedScript = scripts.find { it.id == script.id }
             if (updatedScript != null) {
-                script = updatedScript
-                // 重新初始化事件列表以确保数据同步
-                initEventList()
-                // 刷新执行模式选择
-                refreshExecutionModeSelection()
-                // 刷新菜单
-                invalidateOptionsMenu()
+                val oldEventCount = script.events.size
+                val newEventCount = updatedScript.events.size
+                
+                android.util.Log.d("ScriptEditActivity", "脚本数据已更新: 事件数量 $oldEventCount -> $newEventCount")
+                
+                // 比较事件是否有变化
+                var hasChanges = oldEventCount != newEventCount
+                if (!hasChanges && oldEventCount == newEventCount) {
+                    for (i in 0 until oldEventCount) {
+                        if (script.events[i].params != updatedScript.events[i].params) {
+                            hasChanges = true
+                            android.util.Log.d("ScriptEditActivity", "检测到事件 $i 参数变化")
+                            android.util.Log.d("ScriptEditActivity", "原参数: ${script.events[i].params}")
+                            android.util.Log.d("ScriptEditActivity", "新参数: ${updatedScript.events[i].params}")
+                            break
+                        }
+                    }
+                }
+                
+                if (hasChanges) {
+                    android.util.Log.d("ScriptEditActivity", "检测到数据变化，更新UI")
+                    script = updatedScript
+                    // 重新初始化事件列表以确保数据同步
+                    initEventList()
+                    // 刷新执行模式选择
+                    refreshExecutionModeSelection()
+                    // 刷新菜单
+                    invalidateOptionsMenu()
+                } else {
+                    android.util.Log.d("ScriptEditActivity", "数据无变化，保持现有UI")
+                }
+            } else {
+                android.util.Log.w("ScriptEditActivity", "警告：无法找到脚本ID ${script.id}")
             }
         }
     }
@@ -246,13 +280,13 @@ class ScriptEditActivity : AppCompatActivity() {
 
     private fun showAddEventDialog() {
         // 检查是否已经有OCR节点
-        val hasOcrNode = script.events.any { it.type == EventType.OCR }
-        if (hasOcrNode) {
-            Toast.makeText(this, "已有识别数字节点，无法添加新节点。请先删除识别数字节点。", Toast.LENGTH_LONG).show()
+        val hasOcrEvent = script.events.any { it.type == EventType.OCR }
+        if (hasOcrEvent) {
+            Toast.makeText(this, "已有识别文本节点，无法添加新节点。请先删除识别文本节点。", Toast.LENGTH_LONG).show()
             return
         }
         
-        val items = arrayOf("点击", "滑动", "等待", "识别数字")
+        val items = arrayOf("点击", "滑动", "等待", "识别文本")
         val icons = arrayOf("👆", "👉", "⏱️", "👁️")
         val displayItems = items.mapIndexed { index, item -> "${icons[index]} $item" }.toTypedArray()
         
@@ -277,7 +311,7 @@ class ScriptEditActivity : AppCompatActivity() {
                         showWaitEventDialog()
                     }
                     3 -> {
-                        // 识别数字事件 - 启动录制Activity
+                        // 识别文本事件 - 启动录制Activity
                         val intent = Intent(this, EventRecordActivity::class.java)
                         intent.putExtra("event_type", "OCR")
                         startActivityForResult(intent, REQUEST_CODE_RECORD_EVENT)
@@ -381,7 +415,14 @@ class ScriptEditActivity : AppCompatActivity() {
 
     private fun saveScript() {
         lifecycleScope.launch {
+            android.util.Log.d("ScriptEditActivity", "编辑页面保存脚本: ${script.name}")
+            android.util.Log.d("ScriptEditActivity", "编辑页面保存的事件数量: ${script.events.size}")
+            script.events.forEachIndexed { index, event ->
+                android.util.Log.d("ScriptEditActivity", "编辑页面保存事件 $index: ${event.type} - ${event.params}")
+            }
+            
             scriptStorage.saveScript(script)
+            android.util.Log.d("ScriptEditActivity", "编辑页面脚本保存完成")
         }
     }
 
@@ -436,46 +477,62 @@ class ScriptEditActivity : AppCompatActivity() {
     }
 
     private fun executeScript() {
-        // 设置全局的ScriptExecutor实例，以便停止按钮可以停止脚本
-        com.example.clickhelper.service.FloatingToolbarService.setGlobalScriptExecutor(scriptExecutor)
-        
-        scriptExecutor.executeScript(script, object : ScriptExecutor.ExecutionCallback {
-            override fun onExecutionStart() {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "开始执行脚本", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            override fun onExecutionComplete() {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "脚本执行完成", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            override fun onExecutionError(error: String) {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "执行失败: $error", Toast.LENGTH_LONG).show()
-                }
-            }
-
-            override fun onEventExecuted(event: ScriptEvent, index: Int) {
-                runOnUiThread {
-                    // 可以在这里更新UI显示当前执行的事件
-                }
+        // 在执行前先保存脚本，确保数据同步
+        lifecycleScope.launch {
+            scriptStorage.saveScript(script)
+            android.util.Log.d("ScriptEditActivity", "脚本已保存，开始执行: ${script.name}")
+            android.util.Log.d("ScriptEditActivity", "执行的脚本事件数量: ${script.events.size}")
+            script.events.forEachIndexed { index, event ->
+                android.util.Log.d("ScriptEditActivity", "事件 $index: ${event.type} - ${event.params}")
             }
             
-            override fun onExecutionStopped() {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "脚本执行已停止", Toast.LENGTH_SHORT).show()
+            // 设置全局的ScriptExecutor实例，以便停止按钮可以停止脚本
+            com.example.clickhelper.service.FloatingToolbarService.setGlobalScriptExecutor(scriptExecutor)
+            
+            scriptExecutor.executeScript(script, object : ScriptExecutor.ExecutionCallback {
+                override fun onExecutionStart() {
+                    runOnUiThread {
+                        Toast.makeText(this@ScriptEditActivity, "开始执行脚本", Toast.LENGTH_SHORT).show()
+                    }
                 }
-            }
 
-            override fun onNumberRecognitionSuccess(recognizedNumber: Double, targetNumber: Double, comparisonType: String) {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "识别成功！识别到数字: $recognizedNumber, 条件: $comparisonType $targetNumber", Toast.LENGTH_LONG).show()
+                override fun onExecutionComplete() {
+                    runOnUiThread {
+                        Toast.makeText(this@ScriptEditActivity, "脚本执行完成", Toast.LENGTH_SHORT).show()
+                    }
                 }
-            }
-        })
+
+                override fun onExecutionError(error: String) {
+                    runOnUiThread {
+                        Toast.makeText(this@ScriptEditActivity, "执行失败: $error", Toast.LENGTH_LONG).show()
+                    }
+                }
+
+                override fun onEventExecuted(event: ScriptEvent, index: Int) {
+                    runOnUiThread {
+                        // 可以在这里更新UI显示当前执行的事件
+                    }
+                }
+                
+                override fun onExecutionStopped() {
+                    runOnUiThread {
+                        Toast.makeText(this@ScriptEditActivity, "脚本执行已停止", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun onNumberRecognitionSuccess(recognizedNumber: Double, targetNumber: Double, comparisonType: String) {
+                    runOnUiThread {
+                        Toast.makeText(this@ScriptEditActivity, "识别成功！识别到数字: $recognizedNumber, 条件: $comparisonType $targetNumber", Toast.LENGTH_LONG).show()
+                    }
+                }
+                
+                override fun onTextRecognitionSuccess(recognizedText: String, targetText: String, comparisonType: String) {
+                    runOnUiThread {
+                        Toast.makeText(this@ScriptEditActivity, "识别成功！识别到文字: $recognizedText, 条件: $comparisonType $targetText", Toast.LENGTH_LONG).show()
+                    }
+                }
+            })
+        }
     }
     
     private fun stopScript() {

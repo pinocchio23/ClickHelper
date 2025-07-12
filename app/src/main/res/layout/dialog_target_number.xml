@@ -8,7 +8,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="目标数字："
+        android:text="目标文本："
         android:textSize="16sp"
         android:textStyle="bold"
         android:layout_marginBottom="8dp" />
@@ -17,8 +17,8 @@
         android:id="@+id/et_target_number"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="请输入目标数字"
-        android:inputType="numberDecimal"
+        android:hint="请输入目标文本或数字"
+        android:inputType="text"
         android:layout_marginBottom="16dp" />
 
     <TextView
@@ -36,18 +36,18 @@
         android:orientation="horizontal">
 
         <RadioButton
-            android:id="@+id/rb_less_than"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="小于" />
-
-        <RadioButton
             android:id="@+id/rb_equals"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="等于" />
+
+        <RadioButton
+            android:id="@+id/rb_less_than"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="小于" />
 
     </RadioGroup>
 

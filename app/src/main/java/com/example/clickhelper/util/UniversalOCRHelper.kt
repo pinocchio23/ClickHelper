@@ -21,6 +21,7 @@ import kotlinx.coroutines.*
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import java.util.regex.Pattern
 
 /**
@@ -578,8 +579,8 @@ object UniversalOCRHelper {
             // 保存预处理后的图像用于调试
             saveDebugImage(context, processedBitmap, "processed")
             
-            // 使用标准文字识别器
-            val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            // 使用中文文字识别器（同时支持中文和英文）
+            val textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
             val inputImage = InputImage.fromBitmap(processedBitmap, 0)
             
             // 执行识别
@@ -651,8 +652,8 @@ object UniversalOCRHelper {
             // 保存预处理后的图像用于调试
             saveDebugImage(context, processedBitmap, "processed_text")
             
-            // 使用标准文字识别器
-            val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            // 使用中文文字识别器（同时支持中文和英文）
+            val textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
             val inputImage = InputImage.fromBitmap(processedBitmap, 0)
             
             // 执行识别
@@ -702,14 +703,19 @@ object UniversalOCRHelper {
      */
     private fun preprocessImageForOCR(bitmap: Bitmap): Bitmap {
         try {
-            Log.d(TAG, "开始图像预处理，原始尺寸: ${bitmap.width}x${bitmap.height}")
+            Log.d(TAG, "开始图像预处理，原始尺寸: ${bitmap.width}x${bitmap.height}, 配置: ${bitmap.config}")
             
-            // 确保图像是ARGB_8888格式
-            var processedBitmap = if (bitmap.config != Bitmap.Config.ARGB_8888) {
-                Log.d(TAG, "转换图像格式从 ${bitmap.config} 到 ARGB_8888")
-                bitmap.copy(Bitmap.Config.ARGB_8888, false)
-            } else {
-                bitmap
+            // 确保图像是ARGB_8888格式，不是HARDWARE
+            var processedBitmap = when {
+                bitmap.config == null || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) -> {
+                    Log.d(TAG, "转换图像格式从 ${bitmap.config} 到 ARGB_8888")
+                    bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                }
+                bitmap.config != Bitmap.Config.ARGB_8888 -> {
+                    Log.d(TAG, "转换图像格式从 ${bitmap.config} 到 ARGB_8888")
+                    bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                }
+                else -> bitmap
             }
             
             // 智能放大图像以提高识别率
@@ -723,18 +729,37 @@ object UniversalOCRHelper {
                 val newWidth = (processedBitmap.width * scale).toInt()
                 val newHeight = (processedBitmap.height * scale).toInt()
                 Log.d(TAG, "放大图像，缩放比例: $scale, 新尺寸: ${newWidth}x${newHeight}")
-                processedBitmap = Bitmap.createScaledBitmap(processedBitmap, newWidth, newHeight, true)
+                
+                val scaledBitmap = Bitmap.createScaledBitmap(processedBitmap, newWidth, newHeight, true)
+                
+                // 检查缩放后的bitmap是否又变成了HARDWARE
+                processedBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && scaledBitmap.config == Bitmap.Config.HARDWARE) {
+                    Log.d(TAG, "缩放后又变成HARDWARE配置，重新转换")
+                    scaledBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                } else {
+                    scaledBitmap
+                }
             }
             
             // 应用多层图像增强
             processedBitmap = enhanceImageQuality(processedBitmap)
             
-            Log.d(TAG, "图像预处理完成，最终尺寸: ${processedBitmap.width}x${processedBitmap.height}")
+            Log.d(TAG, "图像预处理完成，最终尺寸: ${processedBitmap.width}x${processedBitmap.height}, 配置: ${processedBitmap.config}")
             return processedBitmap
             
         } catch (e: Exception) {
             Log.e(TAG, "图像预处理失败", e)
-            return bitmap
+            // 如果预处理失败，尝试返回兼容格式的原图像
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) {
+                    bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                } else {
+                    bitmap
+                }
+            } catch (copyException: Exception) {
+                Log.e(TAG, "转换bitmap格式也失败，返回原图像", copyException)
+                bitmap
+            }
         }
     }
     
@@ -742,15 +767,41 @@ object UniversalOCRHelper {
      * 为文字识别预处理图像
      */
     private fun preprocessImageForTextOCR(bitmap: Bitmap): Bitmap {
-        // 针对文字识别进行图像预处理
-        val scale = 2.0f  // 放大2倍以提高识别率
-        val width = (bitmap.width * scale).toInt()
-        val height = (bitmap.height * scale).toInt()
-        
-        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, width, height, true)
-        
-        // 应用锐化和对比度增强
-        return enhanceImageForTextOCR(scaledBitmap)
+        try {
+            Log.d(TAG, "开始预处理图像，原始配置: ${bitmap.config}")
+            
+            // 针对文字识别进行图像预处理
+            val scale = 2.0f  // 放大2倍以提高识别率
+            val width = (bitmap.width * scale).toInt()
+            val height = (bitmap.height * scale).toInt()
+            
+            // 创建缩放后的bitmap，确保不是HARDWARE配置
+            var scaledBitmap = Bitmap.createScaledBitmap(bitmap, width, height, true)
+            
+            // 检查缩放后的bitmap配置，如果是HARDWARE则转换
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && scaledBitmap.config == Bitmap.Config.HARDWARE) {
+                Log.d(TAG, "缩放后的bitmap是HARDWARE配置，转换为ARGB_8888")
+                scaledBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false)
+            }
+            
+            Log.d(TAG, "缩放后bitmap配置: ${scaledBitmap.config}")
+            
+            // 应用锐化和对比度增强
+            return enhanceImageForTextOCR(scaledBitmap)
+        } catch (e: Exception) {
+            Log.e(TAG, "预处理图像失败", e)
+            // 如果预处理失败，尝试返回兼容格式的原图像
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) {
+                    bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                } else {
+                    bitmap
+                }
+            } catch (copyException: Exception) {
+                Log.e(TAG, "转换bitmap格式也失败，返回原图像", copyException)
+                bitmap
+            }
+        }
     }
     
     /**
@@ -1042,38 +1093,57 @@ object UniversalOCRHelper {
     }
     
     /**
-     * 增强图像以提高OCR识别率
+     * 增强图像用于OCR识别
      */
     private fun enhanceImageForOCR(bitmap: Bitmap): Bitmap {
         try {
+            Log.d(TAG, "开始增强图像，原始配置: ${bitmap.config}")
+            
+            // 检查bitmap配置，Config.HARDWARE不能用于创建可变bitmap
+            val config = when {
+                bitmap.config == null -> Bitmap.Config.ARGB_8888
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE -> Bitmap.Config.ARGB_8888
+                else -> bitmap.config!!
+            }
+            
             val width = bitmap.width
             val height = bitmap.height
-            val enhancedBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val enhancedBitmap = Bitmap.createBitmap(width, height, config)
             val canvas = Canvas(enhancedBitmap)
             
-            // 使用更激进的对比度和亮度调整
+            // 应用对比度增强和锐化
             val paint = Paint().apply {
                 colorFilter = android.graphics.ColorMatrixColorFilter(
-                    floatArrayOf(
-                        2.5f, 0f, 0f, 0f, -50f,  // 红色通道：高对比度
-                        0f, 2.5f, 0f, 0f, -50f,  // 绿色通道
-                        0f, 0f, 2.5f, 0f, -50f,  // 蓝色通道
-                        0f, 0f, 0f, 1f, 0f       // Alpha通道
-                    )
+                    android.graphics.ColorMatrix().apply {
+                        // 增强对比度的颜色矩阵
+                        set(floatArrayOf(
+                            1.5f, 0f, 0f, 0f, -50f,     // 红色通道
+                            0f, 1.5f, 0f, 0f, -50f,     // 绿色通道  
+                            0f, 0f, 1.5f, 0f, -50f,     // 蓝色通道
+                            0f, 0f, 0f, 1f, 0f         // Alpha通道
+                        ))
+                    }
                 )
             }
             
             canvas.drawBitmap(bitmap, 0f, 0f, paint)
             
-            // 应用额外的锐化
-            val sharpenedBitmap = applySharpenFilter(enhancedBitmap)
-            
-            Log.d(TAG, "图像增强完成")
-            return sharpenedBitmap
+            Log.d(TAG, "图像增强完成，配置: ${enhancedBitmap.config}")
+            return enhancedBitmap
             
         } catch (e: Exception) {
-            Log.e(TAG, "图像增强失败", e)
-            return bitmap
+            Log.e(TAG, "增强图像失败，返回原图像", e)
+            // 如果增强失败，尝试复制原bitmap到兼容格式
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) {
+                    bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                } else {
+                    bitmap
+                }
+            } catch (copyException: Exception) {
+                Log.e(TAG, "复制bitmap也失败，返回原图像", copyException)
+                bitmap
+            }
         }
     }
     
@@ -1081,27 +1151,47 @@ object UniversalOCRHelper {
      * 为文字识别增强图像
      */
     private fun enhanceImageForTextOCR(bitmap: Bitmap): Bitmap {
-        // 创建一个新的bitmap用于处理
-        val enhancedBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config)
-        val canvas = Canvas(enhancedBitmap)
-        
-        // 应用对比度增强
-        val paint = Paint().apply {
-            colorFilter = android.graphics.ColorMatrixColorFilter(
-                android.graphics.ColorMatrix().apply {
-                    set(floatArrayOf(
-                        1.5f, 0f, 0f, 0f, 0f,     // 红色通道
-                        0f, 1.5f, 0f, 0f, 0f,     // 绿色通道
-                        0f, 0f, 1.5f, 0f, 0f,     // 蓝色通道
-                        0f, 0f, 0f, 1f, 0f       // Alpha通道
-                    ))
-                }
-            )
+        try {
+            // 检查bitmap配置，Config.HARDWARE不能用于创建可变bitmap
+            val config = when {
+                bitmap.config == null -> Bitmap.Config.ARGB_8888
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE -> Bitmap.Config.ARGB_8888
+                else -> bitmap.config!!
+            }
+            
+            Log.d(TAG, "原始bitmap配置: ${bitmap.config}, 使用配置: $config")
+            
+            // 创建一个新的bitmap用于处理，确保使用安全的配置
+            val enhancedBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, config)
+            val canvas = Canvas(enhancedBitmap)
+            
+            // 应用对比度增强
+            val paint = Paint().apply {
+                colorFilter = android.graphics.ColorMatrixColorFilter(
+                    android.graphics.ColorMatrix().apply {
+                        set(floatArrayOf(
+                            1.5f, 0f, 0f, 0f, 0f,     // 红色通道
+                            0f, 1.5f, 0f, 0f, 0f,     // 绿色通道
+                            0f, 0f, 1.5f, 0f, 0f,     // 蓝色通道
+                            0f, 0f, 0f, 1f, 0f       // Alpha通道
+                        ))
+                    }
+                )
+            }
+            
+            canvas.drawBitmap(bitmap, 0f, 0f, paint)
+            
+            return enhancedBitmap
+        } catch (e: Exception) {
+            Log.e(TAG, "增强图像失败，返回原图像", e)
+            // 如果增强失败，尝试复制原bitmap到兼容格式
+            return try {
+                bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            } catch (copyException: Exception) {
+                Log.e(TAG, "复制bitmap也失败，返回原图像", copyException)
+                bitmap
+            }
         }
-        
-        canvas.drawBitmap(bitmap, 0f, 0f, paint)
-        
-        return enhancedBitmap
     }
 
     /**
@@ -1151,7 +1241,7 @@ object UniversalOCRHelper {
             // 保存增强后的图像用于调试
             saveDebugImage(context, enhancedBitmap, "enhanced")
             
-            val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
             val inputImage = InputImage.fromBitmap(enhancedBitmap, 0)
             
             recognizeWithRecognizer(textRecognizer, inputImage) { recognizedText ->
@@ -1215,7 +1305,7 @@ object UniversalOCRHelper {
             // 保存增强后的图像用于调试
             saveDebugImage(context, enhancedBitmap, "enhanced_text")
             
-            val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
             val inputImage = InputImage.fromBitmap(enhancedBitmap, 0)
             
             textRecognizer.process(inputImage)
@@ -1315,7 +1405,7 @@ object UniversalOCRHelper {
             // 保存调试图像
             saveDebugImage(context, enhancedBitmap, "scale_${scale}x")
             
-            val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
             val inputImage = InputImage.fromBitmap(enhancedBitmap, 0)
             
             recognizeWithRecognizer(textRecognizer, inputImage) { recognizedText ->
