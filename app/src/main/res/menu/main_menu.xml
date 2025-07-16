@@ -16,14 +16,14 @@
         android:title="检查权限状态"
         android:icon="@drawable/ic_check"
         app:showAsAction="never" />
-    <item
-        android:id="@+id/action_token_status"
-        android:title="Token状态"
-        android:icon="@drawable/ic_check"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/action_clear_token"
-        android:title="清除Token"
-        android:icon="@drawable/ic_clear"
-        app:showAsAction="never" />
+<!--    <item-->
+<!--        android:id="@+id/action_token_status"-->
+<!--        android:title="Token状态"-->
+<!--        android:icon="@drawable/ic_check"-->
+<!--        app:showAsAction="never" />-->
+<!--    <item-->
+<!--        android:id="@+id/action_clear_token"-->
+<!--        android:title="清除Token"-->
+<!--        android:icon="@drawable/ic_clear"-->
+<!--        app:showAsAction="never" />-->
 </menu> 

@@ -77,10 +77,7 @@ class MainActivity : AppCompatActivity() {
             showAddScriptDialog()
         }
         
-        // 延迟检查权限，避免阻塞UI初始化
-        findViewById<RecyclerView>(R.id.recycler_view_scripts).postDelayed({
-            checkPermissions()
-        }, 1000)
+        // 权限检查将在onResume()中进行，避免重复检查
     }
     
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -194,15 +191,7 @@ class MainActivity : AppCompatActivity() {
                     PermissionHelper.openAccessibilitySettings(this)
                 }
             }
-            !permissionStatus.hasIgnoreBatteryOptimization -> {
-                showPermissionGuidanceDialog(
-                    "电池优化设置",
-                    "即将打开电池优化设置页面，请为\"点击助手\"选择\"不优化\"或\"允许\"。",
-                    "打开设置"
-                ) {
-                    PermissionHelper.requestIgnoreBatteryOptimizations(this)
-                }
-            }
+            
             !permissionStatus.hasOverlay -> {
                 showPermissionGuidanceDialog(
                     "悬浮窗权限",
@@ -210,6 +199,15 @@ class MainActivity : AppCompatActivity() {
                     "打开设置"
                 ) {
                     PermissionHelper.requestOverlayPermission(this, null)
+                }
+            }
+            !permissionStatus.hasIgnoreBatteryOptimization -> {
+                showPermissionGuidanceDialog(
+                    "电池优化设置",
+                    "即将打开电池优化设置页面，请为\"点击助手\"选择\"不优化\"或\"允许\"。",
+                    "打开设置"
+                ) {
+                    PermissionHelper.requestIgnoreBatteryOptimizations(this)
                 }
             }
             else -> {
@@ -640,22 +638,28 @@ class MainActivity : AppCompatActivity() {
 
     private fun initScriptList() {
         val recyclerView = findViewById<RecyclerView>(R.id.recycler_view_scripts)
-        scriptAdapter = ScriptAdapter(scripts) { script ->
-            val intent = Intent(this, ScriptEditActivity::class.java)
-            intent.putExtra("script", script)
-            startActivity(intent)
-        }
+        scriptAdapter = ScriptAdapter(
+            scripts = scripts,
+            onItemClick = { script ->
+                val intent = Intent(this, ScriptEditActivity::class.java)
+                intent.putExtra("script", script)
+                startActivity(intent)
+            },
+            onDeleteClick = { script ->
+                showDeleteScriptDialog(script)
+            },
+            onSelectionChange = { script ->
+                // 保存选择的脚本
+                lifecycleScope.launch {
+                    scriptStorage.saveSelectedScriptId(script.id)
+                }
+            }
+        )
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = scriptAdapter
     }
 
     private fun showAddScriptDialog() {
-        // 检查是否已经有脚本
-        if (scripts.isNotEmpty()) {
-            Toast.makeText(this, "已有脚本存在，无法添加新脚本。请先删除现有脚本。", Toast.LENGTH_LONG).show()
-            return
-        }
-        
         val editText = EditText(this)
         editText.hint = "输入脚本名称"
         
@@ -674,6 +678,14 @@ class MainActivity : AppCompatActivity() {
                     scripts.add(newScript)
                     scriptAdapter.notifyItemInserted(scripts.size - 1)
                     
+                    // 如果这是第一个脚本，自动选择它
+                    if (scripts.size == 1) {
+                        scriptAdapter.setSelectedScriptId(newScript.id)
+                        lifecycleScope.launch {
+                            scriptStorage.saveSelectedScriptId(newScript.id)
+                        }
+                    }
+                    
                     // 保存到本地存储
                     lifecycleScope.launch {
                         scriptStorage.saveScript(newScript)
@@ -690,7 +702,66 @@ class MainActivity : AppCompatActivity() {
             scripts.clear()
             scripts.addAll(savedScripts)
             scriptAdapter.notifyDataSetChanged()
+            
+            // 加载选择的脚本
+            val selectedScriptId = scriptStorage.loadSelectedScriptId()
+            if (selectedScriptId != null && scripts.any { it.id == selectedScriptId }) {
+                scriptAdapter.setSelectedScriptId(selectedScriptId)
+            } else if (scripts.isNotEmpty()) {
+                // 如果没有选择的脚本或选择的脚本不存在，则默认选择第一个
+                scriptAdapter.setSelectedScriptId(scripts.first().id)
+                scriptStorage.saveSelectedScriptId(scripts.first().id)
+            }
         }
+    }
+    
+    private fun showDeleteScriptDialog(script: Script) {
+        AlertDialog.Builder(this)
+            .setTitle("删除脚本")
+            .setMessage("确定要删除脚本 \"${script.name}\" 吗？此操作不可撤销。")
+            .setPositiveButton("删除") { _, _ ->
+                deleteScript(script)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+    
+    private fun deleteScript(script: Script) {
+        lifecycleScope.launch {
+            val success = scriptStorage.deleteScript(script.id)
+            if (success) {
+                val index = scripts.indexOf(script)
+                if (index != -1) {
+                    scripts.removeAt(index)
+                    scriptAdapter.notifyItemRemoved(index)
+                    
+                    // 如果删除的是当前选择的脚本，重新选择
+                    if (scriptAdapter.getSelectedScriptId() == script.id) {
+                        if (scripts.isNotEmpty()) {
+                            // 选择第一个脚本
+                            scriptAdapter.setSelectedScriptId(scripts.first().id)
+                            scriptStorage.saveSelectedScriptId(scripts.first().id)
+                        } else {
+                            // 没有脚本了，清除选择
+                            scriptAdapter.setSelectedScriptId(null)
+                            scriptStorage.saveSelectedScriptId(null)
+                        }
+                    }
+                    
+                    Toast.makeText(this@MainActivity, "脚本已删除", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this@MainActivity, "删除脚本失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    /**
+     * 获取当前选择的脚本
+     */
+    fun getSelectedScript(): Script? {
+        val selectedScriptId = scriptAdapter.getSelectedScriptId()
+        return scripts.find { it.id == selectedScriptId }
     }
      
          override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -723,14 +794,14 @@ class MainActivity : AppCompatActivity() {
                 checkPermissions()
                 true
             }
-            R.id.action_token_status -> {
-                showTokenStatus()
-                true
-            }
-            R.id.action_clear_token -> {
-                showClearTokenDialog()
-                true
-            }
+//            R.id.action_token_status -> {
+//                showTokenStatus()
+//                true
+//            }
+//            R.id.action_clear_token -> {
+//                showClearTokenDialog()
+//                true
+//            }
             else -> super.onOptionsItemSelected(item)
         }
     }

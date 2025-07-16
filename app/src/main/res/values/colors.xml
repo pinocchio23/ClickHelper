@@ -20,4 +20,8 @@
     <color name="green">#FF4CAF50</color>
     <color name="red">#FFF44336</color>
     <color name="orange">#FFFF9800</color>
+    
+    <!-- 脚本选中状态颜色 -->
+    <color name="selected_script_background">#FFE3F2FD</color>  <!-- 浅蓝色背景 -->
+    <color name="selected_script_border">#FF1976D2</color>       <!-- 蓝色边框 -->
 </resources>

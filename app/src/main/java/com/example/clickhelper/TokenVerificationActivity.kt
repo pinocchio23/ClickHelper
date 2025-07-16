@@ -62,25 +62,33 @@ class TokenVerificationActivity : AppCompatActivity() {
             val inputToken = etToken.text.toString().trim()
             
             if (inputToken.isEmpty()) {
-                showToast(getString(R.string.token_hint))
+                showToast("请输入Token")
                 return@setOnClickListener
             }
             
             verifyToken(inputToken)
         }
+        
+
     }
 
     private fun verifyToken(token: String) {
         if (tokenManager.verifyToken(token)) {
-            // Token验证成功
-            tokenManager.saveToken(token)
-            showToast(getString(R.string.token_verification_success))
-            
-            // 跳转到主界面
-            startMainActivity()
+            // Token验证成功，先解析token信息
+            val tokenInfo = tokenManager.parseTokenInfo(token)
+            if (tokenInfo != null && tokenInfo.isValid) {
+                tokenManager.saveToken(token)
+                showToast("Token验证成功！有效期至：${tokenInfo.expiryDate}")
+                
+                // 跳转到主界面
+                startMainActivity()
+            } else {
+                showToast("Token已过期，请使用有效的Token")
+                etToken.selectAll()
+            }
         } else {
             // Token验证失败
-            showToast(getString(R.string.token_verification_failed))
+            showToast("Token验证失败，请检查格式是否正确")
             etToken.selectAll()
         }
     }
@@ -97,12 +105,28 @@ class TokenVerificationActivity : AppCompatActivity() {
         
         when {
             tokenManager.isTokenValid() -> {
-                tvStatus.text = "${getString(R.string.token_status_valid)} (${getString(R.string.token_remaining_time, formatTime(remainingTime))})"
+                tvStatus.text = "Token有效 (剩余时间: ${formatTime(remainingTime)})"
                 tvStatus.setTextColor(getColor(android.R.color.holo_green_dark))
             }
             inputToken.isEmpty() -> {
-                tvStatus.text = getString(R.string.token_verification_subtitle)
+                tvStatus.text = "请输入Token进行验证"
                 tvStatus.setTextColor(getColor(android.R.color.darker_gray))
+            }
+            inputToken.length > 10 -> {
+                // 尝试解析token信息来显示预览
+                val tokenInfo = tokenManager.parseTokenInfo(inputToken)
+                if (tokenInfo != null) {
+                    if (tokenInfo.isValid) {
+                        tvStatus.text = "Token格式正确，有效期至: ${tokenInfo.expiryDate}"
+                        tvStatus.setTextColor(getColor(android.R.color.holo_green_light))
+                    } else {
+                        tvStatus.text = "Token已过期 (过期时间: ${tokenInfo.expiryDate})"
+                        tvStatus.setTextColor(getColor(android.R.color.holo_red_dark))
+                    }
+                } else {
+                    tvStatus.text = "Token格式错误，请检查"
+                    tvStatus.setTextColor(getColor(android.R.color.holo_red_dark))
+                }
             }
             else -> {
                 tvStatus.text = "待验证..."
@@ -128,6 +152,8 @@ class TokenVerificationActivity : AppCompatActivity() {
     private fun showToast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
+    
+
 
     override fun onBackPressed() {
         // 显示退出确认对话框

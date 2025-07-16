@@ -306,48 +306,60 @@ class EventRecordActivity : AppCompatActivity() {
         val radioLessThan = dialogView.findViewById<android.widget.RadioButton>(R.id.rb_less_than)
         val radioEquals = dialogView.findViewById<android.widget.RadioButton>(R.id.rb_equals)
         
-        // 添加"包含"选项
-        val radioContains = android.widget.RadioButton(this)
-        radioContains.text = "包含"
-        radioContains.id = View.generateViewId()
-        radioGroupComparison.addView(radioContains)
+        editTextNumber.hint = "请输入目标数字"
         
-        editTextNumber.hint = "请输入目标文本或数字"
-        
-        // 默认选择包含
-        radioContains.isChecked = true
+        // 默认选择小于
+        radioLessThan.isChecked = true
         
         // 监听输入变化，动态调整选项
+        var lastInputType: String? = null // 记录上次输入的类型
         editTextNumber.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) {
                 val input = s?.toString()?.trim() ?: ""
-                if (input.isNotEmpty()) {
-                    val firstChar = input[0]
-                    if (firstChar.isDigit()) {
-                        // 数字输入，显示等于和小于选项
-                        radioLessThan.visibility = View.VISIBLE
-                        radioEquals.visibility = View.VISIBLE
-                        radioContains.visibility = View.GONE
-                        
-                        // 默认选择小于
-                        radioLessThan.isChecked = true
-                    } else {
-                        // 文字输入，只显示包含选项
-                        radioLessThan.visibility = View.GONE
-                        radioEquals.visibility = View.GONE
-                        radioContains.visibility = View.VISIBLE
-                        
-                        // 默认选择包含
-                        radioContains.isChecked = true
+                val currentInputType = when {
+                    input.isEmpty() -> "empty"
+                    input[0].isDigit() -> "number"
+                    else -> "text"
+                }
+                
+                // 只在输入类型改变时才调整选项和默认选择
+                if (lastInputType != currentInputType) {
+                    when (currentInputType) {
+                        "number" -> {
+                            // 数字输入，显示等于和小于选项
+                            radioLessThan.visibility = View.VISIBLE
+                            radioEquals.visibility = View.VISIBLE
+                            
+                            // 只在从文字类型切换到数字类型时设置默认选择
+                            if (lastInputType == "text") {
+                                // 如果之前是文字输入，默认选择小于
+                                radioLessThan.isChecked = true
+                            } else if (lastInputType == "empty") {
+                                // 如果之前是空输入，只在没有选择时设置默认值
+                                if (!radioLessThan.isChecked && !radioEquals.isChecked) {
+                                    radioLessThan.isChecked = true
+                                }
+                            }
+                            // 如果之前已经是数字输入，保持用户的选择不变
+                        }
+                        "text" -> {
+                            // 文字输入，只显示等于选项
+                            radioLessThan.visibility = View.GONE
+                            radioEquals.visibility = View.VISIBLE
+                            
+                            // 文字输入强制选择等于
+                            radioEquals.isChecked = true
+                        }
+                        "empty" -> {
+                            // 空输入，显示所有选项，但不改变用户的选择
+                            radioLessThan.visibility = View.VISIBLE
+                            radioEquals.visibility = View.VISIBLE
+                            // 不重置用户的选择状态
+                        }
                     }
-                } else {
-                    // 空输入，默认显示包含选项
-                    radioLessThan.visibility = View.VISIBLE
-                    radioEquals.visibility = View.VISIBLE
-                    radioContains.visibility = View.VISIBLE
-                    radioContains.isChecked = true
+                    lastInputType = currentInputType
                 }
             }
         })
@@ -368,8 +380,7 @@ class EventRecordActivity : AppCompatActivity() {
             when (existingComparisonType) {
                 "小于" -> radioLessThan.isChecked = true
                 "等于" -> radioEquals.isChecked = true
-                "包含" -> radioContains.isChecked = true
-                else -> radioContains.isChecked = true
+                else -> radioLessThan.isChecked = true
             }
         }
         
@@ -382,36 +393,31 @@ class EventRecordActivity : AppCompatActivity() {
                     val comparisonType = when {
                         radioLessThan.isChecked -> "小于"
                         radioEquals.isChecked -> "等于"
-                        radioContains.isChecked -> "包含"
-                        else -> "包含"
+                        else -> "小于"
                     }
                     
-                    val params = if (comparisonType == "包含") {
-                        // 文字识别
+                    // 判断是数字还是文字
+                    val targetNumber = targetText.toDoubleOrNull()
+                    val params = if (targetNumber != null) {
+                        // 数字识别
+                        mapOf(
+                            "left" to kotlin.math.min(startX, endX),
+                            "top" to kotlin.math.min(startY, endY),
+                            "right" to kotlin.math.max(startX, endX),
+                            "bottom" to kotlin.math.max(startY, endY),
+                            "targetNumber" to targetNumber,
+                            "comparisonType" to comparisonType
+                        )
+                    } else {
+                        // 文字识别（只支持等于）
                         mapOf(
                             "left" to kotlin.math.min(startX, endX),
                             "top" to kotlin.math.min(startY, endY),
                             "right" to kotlin.math.max(startX, endX),
                             "bottom" to kotlin.math.max(startY, endY),
                             "targetText" to targetText,
-                            "comparisonType" to comparisonType
+                            "comparisonType" to "等于"
                         )
-                    } else {
-                        // 数字识别
-                        val targetNumber = targetText.toDoubleOrNull()
-                        if (targetNumber != null) {
-                            mapOf(
-                                "left" to kotlin.math.min(startX, endX),
-                                "top" to kotlin.math.min(startY, endY),
-                                "right" to kotlin.math.max(startX, endX),
-                                "bottom" to kotlin.math.max(startY, endY),
-                                "targetNumber" to targetNumber,
-                                "comparisonType" to comparisonType
-                            )
-                        } else {
-                            Toast.makeText(this, "数字格式不正确", Toast.LENGTH_SHORT).show()
-                            return@setPositiveButton
-                        }
                     }
                     
                     val event = ScriptEvent(EventType.OCR, params)

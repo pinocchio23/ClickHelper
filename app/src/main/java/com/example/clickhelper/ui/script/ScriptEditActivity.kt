@@ -1,109 +1,144 @@
 package com.example.clickhelper.ui.script
 
+import android.app.Activity
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.EditText
-import android.widget.RadioGroup
 import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.example.clickhelper.MainActivity
 import com.example.clickhelper.R
-import com.example.clickhelper.storage.ScriptStorage
-import kotlinx.coroutines.launch
-import com.example.clickhelper.executor.ScriptExecutor
-import com.example.clickhelper.model.EventType
-import com.example.clickhelper.model.ExecutionMode
 import com.example.clickhelper.model.Script
 import com.example.clickhelper.model.ScriptEvent
+import com.example.clickhelper.model.EventType
+import com.example.clickhelper.model.ExecutionMode
+import com.example.clickhelper.storage.ScriptStorage
+import com.example.clickhelper.executor.ScriptExecutor
 import com.example.clickhelper.util.TokenManager
 import com.example.clickhelper.TokenVerificationActivity
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import kotlinx.coroutines.launch
 
 class ScriptEditActivity : AppCompatActivity() {
+    companion object {
+        private const val TAG = "ScriptEditActivity"
+        private const val REQUEST_CODE_RECORD_EVENT = 1001
+        private const val REQUEST_CODE_EDIT_EVENT = 2000
+    }
     
     private lateinit var script: Script
     private lateinit var eventAdapter: EventAdapter
-    private val scriptExecutor by lazy { ScriptExecutor(this) }
+    private lateinit var scriptExecutor: ScriptExecutor
     private lateinit var scriptStorage: ScriptStorage
     private lateinit var tokenManager: TokenManager
     
-    companion object {
-        const val REQUEST_CODE_RECORD_EVENT = 1001
-        const val REQUEST_CODE_EDIT_EVENT = 2000
+    // 广播接收器，用于接收脚本更新通知
+    private val scriptUpdateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val scriptId = intent?.getStringExtra("script_id")
+            Log.d(TAG, "Received script update broadcast for script: $scriptId")
+            
+            if (scriptId == script.id) {
+                // 当前脚本被更新，重新加载数据
+                Log.d(TAG, "Current script was updated, reloading data")
+                lifecycleScope.launch {
+                    reloadScriptData()
+                }
+            }
+        }
     }
-
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // 初始化TokenManager并验证Token
-        tokenManager = TokenManager(this)
-        if (!tokenManager.isTokenValid()) {
-            // Token无效，跳转到验证页面
-            val intent = Intent(this, TokenVerificationActivity::class.java)
-            startActivity(intent)
-            finish()
-            return
-        }
-        
         setContentView(R.layout.activity_script_edit)
-
-        // 设置自定义Toolbar作为ActionBar
+        
+        // 初始化组件
+        scriptStorage = ScriptStorage(this)
+        scriptExecutor = ScriptExecutor(this)
+        tokenManager = TokenManager(this)
+        
+        // 从Intent获取脚本数据
+        script = intent.getSerializableExtra("script") as Script
+        
+        // 设置当前正在编辑的脚本ID
+        com.example.clickhelper.service.FloatingToolbarService.setCurrentEditingScriptId(script.id)
+          // 设置自定义Toolbar作为ActionBar
         val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
-        
-        // 获取脚本对象
-        script = intent.getSerializableExtra("script") as? Script ?: return
-        
-        // 设置当前正在编辑的脚本ID（用于工具栏编辑）
-        com.example.clickhelper.service.FloatingToolbarService.setCurrentEditingScriptId(script.id)
-        
-        // 初始化存储
-        scriptStorage = ScriptStorage(this)
-        
         // 设置标题和返回按钮
         supportActionBar?.apply {
             title = script.name
             setDisplayHomeAsUpEnabled(true)
             setDisplayShowHomeEnabled(true)
         }
-        
-        // 初始化事件列表
+        // 初始化UI
         initEventList()
+        initExecutionModeSelection()
         
-        // 添加事件按钮
+        // 设置添加事件按钮
         findViewById<FloatingActionButton>(R.id.fab_add_event).setOnClickListener {
             showAddEventDialog()
         }
         
-        // 初始化执行模式选择
-        initExecutionModeSelection()
+        // 注册广播接收器
+        val filter = IntentFilter("com.example.clickhelper.SCRIPT_UPDATED")
+        registerReceiver(scriptUpdateReceiver, filter)
+        Log.d(TAG, "Script update receiver registered")
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.script_edit_menu, menu)
         
-        // 根据执行模式显示不同的菜单项
+        // 根据执行模式和执行状态更新菜单项
+        updateMenuItems(menu)
+        
+        return true
+    }
+    
+    /**
+     * 根据执行模式和执行状态更新菜单项
+     */
+    private fun updateMenuItems(menu: Menu?) {
         val stopItem = menu?.findItem(R.id.action_stop_script)
         val runItem = menu?.findItem(R.id.action_run_script)
+        val isExecuting = ScriptExecutor.isAnyScriptExecuting()
         
         if (script.executionMode == ExecutionMode.REPEAT) {
             // 重复执行模式：显示播放和停止按钮
             stopItem?.isVisible = true
             runItem?.isVisible = true
+            
+            // 根据执行状态启用/禁用按钮
+            runItem?.isEnabled = !isExecuting
+            stopItem?.isEnabled = isExecuting
         } else {
             // 执行一次模式：只显示播放按钮
             stopItem?.isVisible = false
             runItem?.isVisible = true
+            
+            // 根据执行状态启用/禁用按钮
+            runItem?.isEnabled = !isExecuting
         }
         
-        return true
+        Log.d(TAG, "菜单项状态更新: 执行中=$isExecuting, 运行按钮=${runItem?.isEnabled}, 停止按钮=${stopItem?.isEnabled}")
+    }
+    
+    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
+        // 每次显示菜单前更新菜单项状态
+        updateMenuItems(menu)
+        return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -142,18 +177,11 @@ class ScriptEditActivity : AppCompatActivity() {
         
         // 在Activity恢复时重新加载脚本数据（以防被工具栏编辑）
         lifecycleScope.launch {
-            val scripts = scriptStorage.loadScripts()
-            val updatedScript = scripts.find { it.id == script.id }
-            if (updatedScript != null) {
-                script = updatedScript
-                // 重新初始化事件列表以确保数据同步
-                initEventList()
-                // 刷新执行模式选择
-                refreshExecutionModeSelection()
-                // 刷新菜单
-                invalidateOptionsMenu()
-            }
+            reloadScriptData()
         }
+        
+        // 更新菜单项状态
+        invalidateOptionsMenu()
     }
 
     override fun onPause() {
@@ -168,6 +196,9 @@ class ScriptEditActivity : AppCompatActivity() {
         saveScript()
         // 清除当前正在编辑的脚本ID
         com.example.clickhelper.service.FloatingToolbarService.setCurrentEditingScriptId(null)
+        // 取消广播接收器
+        unregisterReceiver(scriptUpdateReceiver)
+        Log.d(TAG, "Script update receiver unregistered")
     }
 
     private fun initEventList() {
@@ -385,6 +416,38 @@ class ScriptEditActivity : AppCompatActivity() {
         }
     }
 
+    private fun reloadScriptData() {
+        Log.d(TAG, "Reloading script data for script ID: ${script.id}")
+        lifecycleScope.launch {
+            val scripts = scriptStorage.loadScripts()
+            val updatedScript = scripts.find { it.id == script.id }
+            if (updatedScript != null) {
+                script = updatedScript
+                // 在主线程中更新UI
+                runOnUiThread {
+                    // 重新初始化事件列表以确保数据同步
+                    initEventList()
+                    // 刷新执行模式选择
+                    refreshExecutionModeSelection()
+                    // 刷新菜单
+                    invalidateOptionsMenu()
+                    Log.d(TAG, "Script data reloaded successfully.")
+                }
+            } else {
+                Log.e(TAG, "Script with ID ${script.id} not found in storage.")
+                // 在主线程中处理UI跳转
+                runOnUiThread {
+                    Toast.makeText(this@ScriptEditActivity, "脚本已被删除", Toast.LENGTH_SHORT).show()
+                    // 跳转到主页面
+                    val intent = Intent(this@ScriptEditActivity, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(intent)
+                    finish()
+                }
+            }
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         
@@ -420,8 +483,14 @@ class ScriptEditActivity : AppCompatActivity() {
             return
         }
 
+        // 检查是否有任何脚本正在执行（全局状态检查）
+        if (ScriptExecutor.isAnyScriptExecuting()) {
+            Toast.makeText(this, "已有脚本正在执行中，请等待完成", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         if (scriptExecutor.isExecuting()) {
-            Toast.makeText(this, "脚本正在执行中", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "当前执行器正在执行脚本", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -440,23 +509,29 @@ class ScriptEditActivity : AppCompatActivity() {
         com.example.clickhelper.service.FloatingToolbarService.setGlobalScriptExecutor(scriptExecutor)
         
         scriptExecutor.executeScript(script, object : ScriptExecutor.ExecutionCallback {
-            override fun onExecutionStart() {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "开始执行脚本", Toast.LENGTH_SHORT).show()
-                }
-            }
+                                    override fun onExecutionStart() {
+                            runOnUiThread {
+                                Toast.makeText(this@ScriptEditActivity, "开始执行脚本", Toast.LENGTH_SHORT).show()
+                                // 更新菜单项状态
+                                invalidateOptionsMenu()
+                            }
+                        }
 
-            override fun onExecutionComplete() {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "脚本执行完成", Toast.LENGTH_SHORT).show()
-                }
-            }
+                        override fun onExecutionComplete() {
+                            runOnUiThread {
+                                Toast.makeText(this@ScriptEditActivity, "脚本执行完成", Toast.LENGTH_SHORT).show()
+                                // 更新菜单项状态
+                                invalidateOptionsMenu()
+                            }
+                        }
 
-            override fun onExecutionError(error: String) {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "执行失败: $error", Toast.LENGTH_LONG).show()
-                }
-            }
+                        override fun onExecutionError(error: String) {
+                            runOnUiThread {
+                                Toast.makeText(this@ScriptEditActivity, "执行失败: $error", Toast.LENGTH_LONG).show()
+                                // 更新菜单项状态
+                                invalidateOptionsMenu()
+                            }
+                        }
 
             override fun onEventExecuted(event: ScriptEvent, index: Int) {
                 runOnUiThread {
@@ -464,15 +539,33 @@ class ScriptEditActivity : AppCompatActivity() {
                 }
             }
             
-            override fun onExecutionStopped() {
-                runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "脚本执行已停止", Toast.LENGTH_SHORT).show()
-                }
-            }
+                                    override fun onExecutionStopped() {
+                            runOnUiThread {
+                                Toast.makeText(this@ScriptEditActivity, "脚本执行已停止", Toast.LENGTH_SHORT).show()
+                                // 更新菜单项状态
+                                invalidateOptionsMenu()
+                            }
+                        }
 
             override fun onNumberRecognitionSuccess(recognizedNumber: Double, targetNumber: Double, comparisonType: String) {
                 runOnUiThread {
-                    Toast.makeText(this@ScriptEditActivity, "识别成功！识别到数字: $recognizedNumber, 条件: $comparisonType $targetNumber", Toast.LENGTH_LONG).show()
+                    // Toast.makeText(this@ScriptEditActivity, "识别成功！识别到数字: $recognizedNumber, 条件: $comparisonType $targetNumber", Toast.LENGTH_LONG).show()
+                }
+            }
+            
+            override fun onTextRecognitionSuccess(recognizedText: String, targetText: String, comparisonType: String) {
+                runOnUiThread {
+                    // Toast.makeText(this@ScriptEditActivity, "识别成功！识别到文字: $recognizedText, 条件: $comparisonType $targetText", Toast.LENGTH_LONG).show()
+                }
+            }
+            
+            override fun onTokenExpired() {
+                runOnUiThread {
+                    Toast.makeText(this@ScriptEditActivity, "Token已过期，请重新验证", Toast.LENGTH_LONG).show()
+                    // 跳转到token验证页面
+                    val intent = Intent(this@ScriptEditActivity, com.example.clickhelper.TokenVerificationActivity::class.java)
+                    startActivity(intent)
+                    finish()
                 }
             }
         })

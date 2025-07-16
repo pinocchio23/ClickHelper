@@ -143,6 +143,7 @@ class OverlayView @JvmOverloads constructor(
     private fun drawArrow(canvas: Canvas, startX: Float, startY: Float, endX: Float, endY: Float) {
         val arrowLength = 40f
         val arrowAngle = Math.PI / 6 // 30度
+        val arrowOffset = 25f // 箭头相对于终点的偏移距离，避免与终点圆圈重叠
         
         // 计算箭头方向
         val dx = endX - startX
@@ -153,16 +154,20 @@ class OverlayView @JvmOverloads constructor(
             val unitX = dx / length
             val unitY = dy / length
             
-            // 箭头的两个分支
-            val arrowX1 = endX - arrowLength * (unitX * Math.cos(arrowAngle) - unitY * Math.sin(arrowAngle)).toFloat()
-            val arrowY1 = endY - arrowLength * (unitX * Math.sin(arrowAngle) + unitY * Math.cos(arrowAngle)).toFloat()
+            // 计算箭头尖端位置，向起点方向偏移一定距离
+            val arrowTipX = endX - arrowOffset * unitX
+            val arrowTipY = endY - arrowOffset * unitY
             
-            val arrowX2 = endX - arrowLength * (unitX * Math.cos(-arrowAngle) - unitY * Math.sin(-arrowAngle)).toFloat()
-            val arrowY2 = endY - arrowLength * (unitX * Math.sin(-arrowAngle) + unitY * Math.cos(-arrowAngle)).toFloat()
+            // 箭头的两个分支
+            val arrowX1 = arrowTipX - arrowLength * (unitX * Math.cos(arrowAngle) - unitY * Math.sin(arrowAngle)).toFloat()
+            val arrowY1 = arrowTipY - arrowLength * (unitX * Math.sin(arrowAngle) + unitY * Math.cos(arrowAngle)).toFloat()
+            
+            val arrowX2 = arrowTipX - arrowLength * (unitX * Math.cos(-arrowAngle) - unitY * Math.sin(-arrowAngle)).toFloat()
+            val arrowY2 = arrowTipY - arrowLength * (unitX * Math.sin(-arrowAngle) + unitY * Math.cos(-arrowAngle)).toFloat()
             
             // 绘制箭头
             val arrowPath = Path().apply {
-                moveTo(endX, endY)
+                moveTo(arrowTipX, arrowTipY)
                 lineTo(arrowX1, arrowY1)
                 lineTo(arrowX2, arrowY2)
                 close()

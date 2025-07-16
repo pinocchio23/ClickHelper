@@ -17,6 +17,7 @@ import com.example.clickhelper.model.ScriptEvent
 import com.example.clickhelper.model.EventType
 import com.example.clickhelper.service.MyAccessibilityService
 import com.example.clickhelper.util.UniversalOCRHelper
+import com.example.clickhelper.util.TokenManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,6 +34,24 @@ import com.example.clickhelper.util.PermissionHelper
 class ScriptExecutor(private val context: Context) {
     companion object {
         private const val TAG = "ScriptExecutor"
+        
+        // 全局执行状态，确保同一时间只能执行一个脚本
+        @Volatile
+        private var globalIsExecuting = false
+        
+        /**
+         * 检查是否有任何脚本正在执行
+         */
+        fun isAnyScriptExecuting(): Boolean {
+            return globalIsExecuting
+        }
+        
+        /**
+         * 设置全局执行状态
+         */
+        private fun setGlobalExecuting(executing: Boolean) {
+            globalIsExecuting = executing
+        }
     }
     
     private var isExecuting = false
@@ -43,6 +62,7 @@ class ScriptExecutor(private val context: Context) {
     private var vibrator: Vibrator? = null
     private var isRepeating = false
     private var repeatRunnable: Runnable? = null
+    private val tokenManager = TokenManager(context)
     
     init {
         try {
@@ -69,13 +89,31 @@ class ScriptExecutor(private val context: Context) {
         fun onNumberRecognitionSuccess(recognizedNumber: Double, targetNumber: Double, comparisonType: String)
         fun onExecutionStopped()
         fun onTextRecognitionSuccess(recognizedText: String, targetText: String, comparisonType: String)
+        fun onTokenExpired()
     }
     
     fun executeScript(script: Script, callback: ExecutionCallback?) {
         Log.d(TAG, "开始执行脚本: ${script.name}, 事件数量: ${script.events.size}")
         
+        // 首先检查Token是否有效
+        if (!tokenManager.isTokenValid()) {
+            Log.w(TAG, "Token已过期或无效，拒绝执行脚本")
+            callback?.onTokenExpired()
+            callback?.onExecutionError("Token已过期，请重新验证后再试")
+            return
+        }
+        
+        Log.d(TAG, "Token验证通过，继续执行脚本")
+        
+        // 检查全局执行状态，确保同一时间只能执行一个脚本
+        if (globalIsExecuting) {
+            Log.w(TAG, "已有脚本正在执行中，拒绝启动新的脚本执行")
+            callback?.onExecutionError("已有脚本正在执行中，请等待当前脚本完成")
+            return
+        }
+        
         if (isExecuting) {
-            callback?.onExecutionError("已有脚本正在执行中")
+            callback?.onExecutionError("当前执行器正在执行脚本")
             return
         }
         
@@ -90,6 +128,12 @@ class ScriptExecutor(private val context: Context) {
         isExecuting = true
         isRepeating = (script.executionMode == com.example.clickhelper.model.ExecutionMode.REPEAT)
         
+        // 设置全局执行状态
+        setGlobalExecuting(true)
+        
+        // 更新token活动时间
+        tokenManager.updateLastActivity()
+        
         callback?.onExecutionStart()
         
         executeEventsSequentially(script.events, 0)
@@ -98,6 +142,16 @@ class ScriptExecutor(private val context: Context) {
     private fun executeEventsSequentially(events: List<ScriptEvent>, index: Int) {
         if (!isExecuting) {
             // 脚本已被停止
+            return
+        }
+        
+        // 在每个事件执行前再次检查Token有效性（特别是重复执行模式）
+        if (!tokenManager.isTokenValid()) {
+            Log.w(TAG, "执行过程中Token已过期，停止脚本执行")
+            isExecuting = false
+            setGlobalExecuting(false)
+            executionCallback?.onTokenExpired()
+            executionCallback?.onExecutionError("Token已过期，脚本执行已停止")
             return
         }
         
@@ -117,6 +171,7 @@ class ScriptExecutor(private val context: Context) {
             } else {
                 // 单次执行模式，结束
                 isExecuting = false
+                setGlobalExecuting(false)
                 executionCallback?.onExecutionComplete()
             }
             return
@@ -135,6 +190,7 @@ class ScriptExecutor(private val context: Context) {
                 return@executeEvent
             } else {
                 isExecuting = false
+                setGlobalExecuting(false)
                 executionCallback?.onExecutionError("事件执行失败: ${event.type}")
             }
         }
@@ -261,7 +317,7 @@ class ScriptExecutor(private val context: Context) {
             
             // 显示Toast提示开始识别
             handler.post {
-                showSystemToast("开始数字识别...", Toast.LENGTH_SHORT)
+                // showSystemToast("开始数字识别...", Toast.LENGTH_SHORT)
             }
             
             // 使用UniversalOCRHelper进行数字识别
@@ -333,6 +389,7 @@ class ScriptExecutor(private val context: Context) {
     fun stopExecution() {
         if (isExecuting) {
             isExecuting = false
+            setGlobalExecuting(false)
             handler.removeCallbacksAndMessages(null)
             executionCallback?.onExecutionError("用户取消执行")
         }
@@ -346,6 +403,9 @@ class ScriptExecutor(private val context: Context) {
         Log.d(TAG, "停止脚本执行")
         isExecuting = false
         isRepeating = false
+        
+        // 清除全局执行状态
+        setGlobalExecuting(false)
         
         // 取消延迟的重复执行任务
         repeatRunnable?.let { runnable ->

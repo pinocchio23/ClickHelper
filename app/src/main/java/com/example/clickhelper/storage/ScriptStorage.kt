@@ -18,6 +18,7 @@ class ScriptStorage(private val context: Context) {
         private const val TAG = "ScriptStorage"
         private const val SCRIPTS_DIR = "ClickHelper"
         private const val SCRIPTS_FILE = "scripts.json"
+        private const val SELECTED_SCRIPT_KEY = "selected_script_id"
     }
     
     private val scriptsDir: File by lazy {
@@ -158,6 +159,40 @@ class ScriptStorage(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "删除脚本失败", e)
             false
+        }
+    }
+    
+    /**
+     * 保存当前选择的脚本ID
+     */
+    suspend fun saveSelectedScriptId(scriptId: String?): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val prefs = context.getSharedPreferences("script_settings", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                if (scriptId != null) {
+                    putString(SELECTED_SCRIPT_KEY, scriptId)
+                } else {
+                    remove(SELECTED_SCRIPT_KEY)
+                }
+                apply()
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "保存选择的脚本ID失败", e)
+            false
+        }
+    }
+    
+    /**
+     * 加载当前选择的脚本ID
+     */
+    suspend fun loadSelectedScriptId(): String? = withContext(Dispatchers.IO) {
+        try {
+            val prefs = context.getSharedPreferences("script_settings", Context.MODE_PRIVATE)
+            prefs.getString(SELECTED_SCRIPT_KEY, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "加载选择的脚本ID失败", e)
+            null
         }
     }
 }

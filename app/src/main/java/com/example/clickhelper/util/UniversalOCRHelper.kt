@@ -345,7 +345,7 @@ object UniversalOCRHelper {
     ) {
         Log.d(TAG, "使用模拟数字识别")
         
-        showSystemToast(context, "正在模拟识别数字...", Toast.LENGTH_SHORT)
+        // showSystemToast(context, "正在模拟识别数字...", Toast.LENGTH_SHORT)
         
         // 模拟识别延迟
         Handler(Looper.getMainLooper()).postDelayed({
@@ -372,10 +372,10 @@ object UniversalOCRHelper {
             }
             
             if (isSuccess) {
-                showSystemToast(context, "✅ 模拟识别成功: $recognizedNumber", Toast.LENGTH_LONG)
+                // showSystemToast(context, "✅ 模拟识别成功: $recognizedNumber", Toast.LENGTH_LONG)
                 callback.onSuccess(recognizedNumber)
             } else {
-                showSystemToast(context, "❌ 模拟识别: $recognizedNumber，不符合条件", Toast.LENGTH_LONG)
+                // showSystemToast(context, "❌ 模拟识别: $recognizedNumber，不符合条件", Toast.LENGTH_LONG)
                 callback.onFailure("识别到 $recognizedNumber，不符合 $comparisonType $targetNumber 的条件")
             }
         }, 1500)
@@ -500,7 +500,7 @@ object UniversalOCRHelper {
     ) {
         Log.d(TAG, "使用模拟文字识别")
         
-        showSystemToast(context, "正在模拟识别文字...", Toast.LENGTH_SHORT)
+        // showSystemToast(context, "正在模拟识别文字...", Toast.LENGTH_SHORT)
         
         // 模拟识别延迟
         Handler(Looper.getMainLooper()).postDelayed({
@@ -528,10 +528,10 @@ object UniversalOCRHelper {
             }
             
             if (isSuccess) {
-                showSystemToast(context, "✅ 模拟识别成功: $recognizedText", Toast.LENGTH_LONG)
+                // showSystemToast(context, "✅ 模拟识别成功: $recognizedText", Toast.LENGTH_LONG)
                 callback.onSuccess(recognizedText)
             } else {
-                showSystemToast(context, "❌ 模拟识别: $recognizedText，不符合条件", Toast.LENGTH_LONG)
+                // showSystemToast(context, "❌ 模拟识别: $recognizedText，不符合条件", Toast.LENGTH_LONG)
                 callback.onFailure("识别到 $recognizedText，不符合 $comparisonType $targetText 的条件")
             }
         }, 1500)
@@ -1082,7 +1082,7 @@ object UniversalOCRHelper {
      */
     private fun enhanceImageForTextOCR(bitmap: Bitmap): Bitmap {
         // 创建一个新的bitmap用于处理
-        val enhancedBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config)
+        val enhancedBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config ?: Bitmap.Config.ARGB_8888)
         val canvas = Canvas(enhancedBitmap)
         
         // 应用对比度增强
@@ -1108,28 +1108,28 @@ object UniversalOCRHelper {
      * 保存调试图像
      */
     private fun saveDebugImage(context: Context, bitmap: Bitmap, prefix: String) {
-        try {
-            val timestamp = System.currentTimeMillis()
-            val filename = "${prefix}_${timestamp}.png"
-            val file = java.io.File(context.getExternalFilesDir("debug"), filename)
+        // try {
+        //     val timestamp = System.currentTimeMillis()
+        //     val filename = "${prefix}_${timestamp}.png"
+        //     val file = java.io.File(context.getExternalFilesDir("debug"), filename)
             
-            // 确保目录存在
-            file.parentFile?.mkdirs()
+        //     // 确保目录存在
+        //     file.parentFile?.mkdirs()
             
-            java.io.FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
+        //     java.io.FileOutputStream(file).use { out ->
+        //         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        //     }
             
-            Log.d(TAG, "调试图像已保存: ${file.absolutePath}")
+        //     Log.d(TAG, "调试图像已保存: ${file.absolutePath}")
             
-            // 显示调试信息给用户
-            Handler(Looper.getMainLooper()).post {
-                showSystemToast(context, "调试图像已保存\n${file.name}\n尺寸: ${bitmap.width}x${bitmap.height}", Toast.LENGTH_LONG)
-            }
+        //     // 显示调试信息给用户
+        //     Handler(Looper.getMainLooper()).post {
+        //         showSystemToast(context, "调试图像已保存\n${file.name}\n尺寸: ${bitmap.width}x${bitmap.height}", Toast.LENGTH_LONG)
+        //     }
             
-        } catch (e: Exception) {
-            Log.w(TAG, "保存调试图像失败", e)
-        }
+        // } catch (e: Exception) {
+        //     Log.w(TAG, "保存调试图像失败", e)
+        // }
     }
     
     /**
@@ -1335,7 +1335,7 @@ object UniversalOCRHelper {
                         
                         Handler(Looper.getMainLooper()).post {
                             if (isSuccess) {
-                                showSystemToast(context, "✅ 缩放策略成功: $description, 识别到: $extractedNumber", Toast.LENGTH_LONG)
+                                // showSystemToast(context, "✅ 缩放策略成功: $description, 识别到: $extractedNumber", Toast.LENGTH_LONG)
                                 callback.onSuccess(extractedNumber)
                             } else {
                                 callback.onFailure("识别到 $extractedNumber，不符合 $comparisonType $targetNumber 的条件")

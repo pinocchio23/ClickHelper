@@ -16,7 +16,7 @@
         android:layout_height="wrap_content"
         android:layout_alignParentTop="true"
         android:layout_marginTop="50dp"
-        android:background="#CC000000"
+        android:background="#666"
         android:gravity="center"
         android:padding="16dp"
         android:text="请点击屏幕上的某个位置"
